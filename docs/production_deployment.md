@@ -28,6 +28,7 @@ A tag (`v0.3.0`) produces:
 | `glue/pyspark/transform_kpis.py@v0.3.0`    | `glue/pyspark/` source                | Glue PySpark job        |
 | `glue/python_shell/*.py@v0.3.0`            | `glue/python_shell/` source           | Glue Python Shell jobs  |
 | `step_functions/pipeline.asl.json@v0.3.0`  | `step_functions/` source              | Terraform `templatefile` |
+| `ui/` (Streamlit app)                      | `ui/` source                          | Run locally or Streamlit Community Cloud |
 | Terraform plan (saved against prod)        | CI                                    | `terraform apply`       |
 
 All artefacts are uploaded to `s3://musicstream-prod-scripts/releases/v0.3.0/` *first*, then Terraform points the Glue jobs at that prefix. This means a rollback is a Terraform variable change, not a redeploy.
@@ -80,8 +81,10 @@ PITR window: 35 days on all KPI tables.
 |-------------------------------------|---------------|----------|
 | Review quarantine bucket            | Daily         | Ops      |
 | Review CloudWatch dashboard         | Daily         | Ops      |
+| Open Streamlit UI, spot-check KPIs  | Daily         | Ops/Analyst |
 | Cost-anomaly check (DPU-hours, DDB) | Weekly        | Ops      |
 | Reference data refresh              | On-demand     | Engineer |
+| Streamlit + `ui/requirements.txt` upgrade | Quarterly | Engineer |
 | Dependency upgrade (Glue version, providers) | Quarterly | Engineer |
 | DR test (restore PITR to a sandbox) | Quarterly     | Engineer |
 

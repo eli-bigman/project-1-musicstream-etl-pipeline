@@ -122,6 +122,7 @@ Every sub-plan is the **stick** an agent hands forward.
 | `testing_strategy.md`             | Unit (pytest), integration (LocalStack/Moto), e2e (synthetic file).     |
 | `sprint_planning.md`              | Sequenced solo sprints, no timeline, agentic step list.                 |
 | `production_deployment.md`        | Promotion, rollback, smoke tests, CI/CD.                                |
+| `ui.md`                           | Streamlit dashboard — page specs, stack, mock mode, deploy options.     |
 
 ## 7. When You Are Stuck
 

@@ -92,6 +92,8 @@ S3 PUT (raw/streams/) → EventBridge → SQS buffer
 | `glue/shared/` | Python wheel | Shared across all jobs; contains `dynamo_utils`, `logging_utils`, `s3_utils`, `schemas` |
 | `step_functions/pipeline.asl.json` | ASL | Read by Terraform `templatefile()` |
 | `infra/modules/` | Terraform | 8 modules — see `docs/terraform.md` |
+| `ui/app.py` + `ui/pages/` | Streamlit | KPI dashboard; calls boto3 directly — no API Gateway (D-28-R) |
+| `ui/lib/` | Python | `dynamo_queries`, `pipeline_ops`, `mock_data`, `aws_clients` |
 
 ---
 
@@ -113,7 +115,8 @@ GSI `date_genre_index` on `genre_daily_kpi` (PK=`date`, SK=`genre`) covers the s
 - **Logging:** All log lines are JSON via `shared.logging_utils`. Mandatory keys: `ts`, `level`, `run_id`, `stage`, `event`. **Never log `user_name` or `user_country` — they are PII.**
 - **No IAM wildcards:** Every `Action` in every policy is an explicit list. `checkov` blocks wildcards in CI.
 - **KMS policy pattern:** Root-principal delegation only; no role ARNs in key policies (D-25, avoids Terraform circular dependencies).
-- **Boto3 DynamoDB:** Always use `dynamo_utils.get_ddb_table()` — never instantiate `boto3.resource("dynamodb")` directly. This ensures adaptive retry is applied everywhere (D-26).
+- **Boto3 DynamoDB:** Always use `dynamo_utils.get_ddb_table()` — never instantiate `boto3.resource("dynamodb")` directly. This ensures adaptive retry is applied everywhere (D-26). The same rule applies in `ui/lib/dynamo_queries.py`.
+- **Streamlit UI:** Run locally with `streamlit run ui/app.py`. The app reads AWS credentials from the environment — same profile used for Terraform. Use `MOCK_MODE=true` to run without credentials. **Do not add API Gateway** between the UI and DynamoDB — the direct `boto3` call is intentional (D-28-R).
 - **Spark writes:** Always set `spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")` before writing partitioned Parquet. Static overwrite will wipe the whole table.
 - **Comments:** Write a comment only when the *why* is non-obvious. No docstrings that describe what the code already says.
 
@@ -132,7 +135,7 @@ GSI `date_genre_index` on `genre_daily_kpi` (PK=`date`, SK=`genre`) covers the s
 ## Testing Before Submitting Work
 
 ```bash
-# Unit + integration tests
+# Unit + integration tests (includes ui/lib/ tests)
 pytest tests/unit tests/integration -q
 
 # Terraform lint
@@ -140,8 +143,8 @@ terraform -chdir=infra/envs/dev validate
 tflint --recursive
 checkov -d infra/
 
-# SAST
-semgrep --config p/python glue/ lambda/
+# SAST (covers glue, lambda, and ui)
+semgrep --config p/python glue/ lambda/ ui/
 ```
 
 All four must be clean before a PR is opened.
@@ -171,3 +174,5 @@ Current sprint exit gates are defined per-sprint in that doc. Check it before st
 - Commit secrets, `.env` files, or files containing `user_name`/`user_country` values.
 - Modify a prior section of `docs/decision.md` — append a revision block instead (telephone-skill rule from `docs/agentic_workflow.md`).
 - Enable Glue job bookmarks — idempotency relies on archive directory layout, not bookmarks (D-10).
+- Add API Gateway between the Streamlit UI and DynamoDB — `boto3` calls DynamoDB directly; API Gateway adds complexity for no benefit here (D-28-R).
+- Use `st.write(user_name)` or any Streamlit call that renders PII fields — the UI must display aggregates only.

@@ -76,14 +76,17 @@
 
 ---
 
-## Sprint 6 — Orchestration
+## Sprint 6 — Orchestration + UI
 **Agent:** Orchestration.
 **Deliverables.**
 - `step_functions/pipeline.asl.json` complete; templated into Terraform.
 - `modules/step-functions` deployed.
-- `modules/eventbridge-trigger` deployed; PUT into `raw/` triggers an execution.
+- `modules/eventbridge-pipes` deployed; PUT into `raw/` → SQS → Pipe → SM execution (D-22).
+- `ui/app.py` + `ui/pages/` + `ui/lib/` built per `docs/ui.md` spec (D-28-R).
+- `ui/requirements.txt` and `ui/.streamlit/config.toml` committed.
+- Mock mode verified offline; live mode verified against dev DynamoDB.
 
-**Exit gate:** End-to-end happy path runs from S3 PUT to DynamoDB item, with archive cleanup, on dev.
+**Exit gate:** (1) End-to-end happy path runs from S3 PUT to DynamoDB item with archive cleanup on dev. (2) `streamlit run ui/app.py` shows the Pipeline page completing a real execution and the KPI Dashboard returning items from DynamoDB.
 
 ---
 
@@ -150,7 +153,7 @@ S = ½–1 working session, M = 2–3, L = 4+ — relative only; no calendar.
 | 3 | A bad CSV can never poison KPIs. |
 | 4 | KPIs are computed correctly from clean parquet. |
 | 5 | KPIs are queryable by an analyst in < 50 ms. |
-| 6 | A file arriving in S3 ends up as DynamoDB items, automatically. |
+| 6 | A file arriving in S3 ends up as DynamoDB items automatically, and a Streamlit dashboard confirms it. |
 | 7 | The pipeline tells you when it's broken before a human notices. |
 | 8 | Auditable, least-privilege, encrypted everywhere. |
 | 9 | Deploying to prod is boring. |
@@ -164,8 +167,8 @@ The sprint sequence holds, but the *contents* of three sprints change.
 ### Sprint 3 — Validation (revised)
 - **Drop** `validate_referential` Python Shell job and its tests.
 - **Add** `lambda/validate_schema/` (D-17) and its unit tests.
-- **Add** the `modules/sqs-buffer` + `modules/lambda-trigger` Terraform modules and a synthetic integration test that drops a file and confirms it is buffered then dispatched (D-11-R).
-- **Exit gate (revised):** A fixture file dropped into `raw/` is captured by EventBridge, buffered in SQS, and triggers one SM execution within 2 minutes.
+- **Add** the `modules/sqs-buffer` + `modules/eventbridge-pipes` Terraform modules (D-22 supersedes the `lambda-trigger` module from D-11-R) and a synthetic integration test that drops a file, confirms it is buffered in SQS, and is dispatched to Step Functions via the Pipe within 2 minutes.
+- **Exit gate (revised):** A fixture file dropped into `raw/` is captured by EventBridge, buffered in SQS, and triggers one SM execution within 2 minutes — no manual Lambda invocation required.
 
 ### Sprint 4 — Transform (revised)
 - The PySpark job now also performs T2 referential validation (left-join + side-output) and T3 biz rules (D-19).
@@ -178,5 +181,9 @@ The sprint sequence holds, but the *contents* of three sprints change.
 - **Exit gate (revised):** All sample analyst queries in `dynamodb_schema.md` §9.5 return expected items.
 
 ### Sprint 8 — Hardening (revised)
-- Adds the Snyk Code / `semgrep` step (D-21).
-- IAM cleanup expands to cover the two new Lambda roles (D-20).
+- Adds the Snyk Code / `semgrep` step covering `glue/`, `lambda/`, and `ui/` (D-21).
+- IAM cleanup expands to cover the `lambda_validator_role` (D-20). Note: the `lambda_trigger_role` from D-11-R is eliminated — EventBridge Pipes replaced that Lambda (D-22), so only one new Lambda role exists.
+- `ui/lib/` added to SAST scope: confirm no PII logged, no hardcoded credentials.
+
+### Sprint 6 — Goal update
+"A file arriving in S3 ends up as DynamoDB items automatically **and a Streamlit dashboard confirms it**."

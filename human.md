@@ -14,6 +14,7 @@ Install these before anything else.
 | AWS CLI | v2.15+ | https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html |
 | Terraform | 1.6+ | https://developer.hashicorp.com/terraform/install |
 | Python | 3.11+ | https://www.python.org/downloads/ |
+| Streamlit | 1.35+ | `pip install streamlit` (or via `ui/requirements.txt`) |
 | Git | any | https://git-scm.com/ |
 | `pip` / `venv` | bundled with Python | — |
 
@@ -22,6 +23,7 @@ Verify:
 aws --version
 terraform --version
 python --version
+streamlit --version
 ```
 
 ---
@@ -281,25 +283,35 @@ All four must be green before opening a PR.
 
 ## 11. Launch the UI Dashboard
 
-The `ui/` directory contains a standalone HTML dashboard that lets you trigger pipeline runs, watch execution status, and query KPIs — directly from a browser.
+The `ui/` directory is a **Streamlit** Python dashboard. It calls `boto3` directly against your DynamoDB tables — no API Gateway or separate backend needed.
 
-### Local (no deploy needed)
+### Install UI dependencies
 ```bash
-# Serve locally — any simple HTTP server works
-python -m http.server 8080 --directory ui/
-# Open http://localhost:8080
+pip install -r ui/requirements.txt
+# or: pip install streamlit boto3 pandas plotly python-dotenv
 ```
 
-Then set your AWS region and table names on the **Settings** tab inside the UI.
-
-### Deploy to S3 + CloudFront (optional)
+### Local (most common)
 ```bash
-SITE_BUCKET="musicstream-${TF_VAR_env}-ui"
-aws s3 sync ui/ "s3://${SITE_BUCKET}/" --delete
-# CloudFront distribution is created by modules/cloudfront (optional, not in v1 Terraform)
+# Ensure AWS credentials are active (SSO or .env sourced)
+streamlit run ui/app.py
+# Opens automatically at http://localhost:8501
 ```
 
-See `docs/ui.md` for the full UI plan including the API Gateway backing layer.
+The app reads `AWS_PROFILE` (or `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) and `TF_VAR_env` from your environment. Set `MOCK_MODE=true` in `.env` to run fully offline with fixture data.
+
+### Mock mode (no AWS needed)
+```bash
+MOCK_MODE=true streamlit run ui/app.py
+```
+A banner in the UI shows when mock mode is active.
+
+### Deploy to Streamlit Community Cloud (optional, free)
+1. Push the repo to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) → New app → point at `ui/app.py`.
+3. Add AWS credentials as **secrets** in the app settings (never in the repo).
+
+See `docs/ui.md` for the full page spec, layout wireframes, and deployment options.
 
 ---
 

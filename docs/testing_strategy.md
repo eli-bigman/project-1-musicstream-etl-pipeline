@@ -106,11 +106,64 @@ The e2e job runs **post-deploy** in the `cd-dev.yml` workflow, not on PR.
 
 A small `scripts/gen_synthetic_streams.py` produces fixture CSVs with controlled defects (missing columns, future timestamps, unknown user ids). It is the source of every file under `tests/fixtures/`.
 
-## 8. Coverage Gates
+## 8. Streamlit UI Testing (D-28-R)
+
+Streamlit apps are pure Python — tested with the same `pytest` toolchain as everything else.
+
+### Unit tests (`tests/unit/test_ui_*.py`)
+
+| Test file | What it covers |
+|-----------|----------------|
+| `test_dynamo_queries.py` | `lib/dynamo_queries.*` helpers return correctly shaped dicts from moto-mocked DynamoDB |
+| `test_pipeline_ops.py`   | `lib/pipeline_ops.upload_to_s3` calls `put_object` with correct bucket/key (moto S3) |
+| `test_mock_data.py`      | `lib/mock_data.*` returns the same schema as the live DynamoDB helpers so mock/live are interchangeable |
+
+```python
+# illustrative — tests/unit/test_dynamo_queries.py
+import boto3
+from moto import mock_aws
+from ui.lib.dynamo_queries import get_top_genres
+
+@mock_aws
+def test_get_top_genres_returns_5_items():
+    # seed mock DynamoDB
+    ddb = boto3.resource("dynamodb", region_name="eu-west-1")
+    table = ddb.create_table(
+        TableName="dev_top_genres_daily",
+        KeySchema=[{"AttributeName":"date","KeyType":"HASH"},{"AttributeName":"rank","KeyType":"RANGE"}],
+        AttributeDefinitions=[{"AttributeName":"date","AttributeType":"S"},{"AttributeName":"rank","AttributeType":"N"}],
+        BillingMode="PAY_PER_REQUEST",
+    )
+    for i in range(1, 6):
+        table.put_item(Item={"date": "2024-06-25", "rank": i, "genre": f"genre{i}", "listen_count": 1000 - i})
+    items = get_top_genres("2024-06-25", env="dev")
+    assert len(items) == 5
+    assert items[0]["rank"] == 1
+```
+
+### Smoke test (manual, against dev)
+
+After `streamlit run ui/app.py` with live credentials:
+
+1. Switch to **Pipeline** tab → upload `tests/fixtures/valid_streams.csv` → confirm stage tracker reaches `ArchiveBatch ✅`.
+2. Switch to **KPI Dashboard** tab → set date `2024-06-25` → click Query → confirm top-genres table has ≥ 1 row.
+3. Set `MOCK_MODE=true` → restart → confirm mock-mode banner appears and data still renders.
+
+There is no automated browser-driver test (Selenium/Playwright) at v1 — Streamlit's Python-native output makes the unit tests sufficient. Add browser automation in v2 if the UI grows.
+
+### SAST scope for UI
+
+`semgrep --config p/python ui/` scans `lib/` for:
+- Hardcoded credentials.
+- PII logging (user_name, user_country appearing in `st.write` / `st.dataframe` calls).
+- Path traversal in any file-read helper.
+
+## 9. Coverage Gates
 
 - Unit + integration > 80 % line coverage of `glue/` source.
+- Unit tests for `ui/lib/` > 70 % line coverage (lower threshold — Streamlit page files themselves are hard to unit-test).
 - No coverage gate on Terraform — `validate` + `plan` is the test.
 
-## 9. Hand-off
+## 10. Hand-off
 
 - **Next agent:** Release agent — needs to know which gates must be green before promotion to prod.
