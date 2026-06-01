@@ -77,8 +77,19 @@ The repo separates **infrastructure**, **application code**, **tests**, and **do
 │       ├── bad_listen_time.csv
 │       └── unknown_user_id.csv
 │
-├── ui/                         ← standalone HTML/JS KPI dashboard (D-28)
-│   └── index.html              ← single-page app; mock mode + live API mode
+├── ui/                         ← Streamlit KPI dashboard (D-28-R)
+│   ├── app.py                  ← home page + quick stats
+│   ├── pages/
+│   │   ├── 1_Pipeline.py       ← upload, trigger, stage tracker (US1–US4)
+│   │   └── 2_KPI_Dashboard.py  ← date/genre filters, charts, tables (US5)
+│   ├── lib/
+│   │   ├── aws_clients.py      ← boto3 client factory
+│   │   ├── dynamo_queries.py   ← KPI table query helpers
+│   │   ├── pipeline_ops.py     ← S3 upload + Step Functions start/poll
+│   │   └── mock_data.py        ← fixture data for offline demo
+│   ├── requirements.txt        ← streamlit, boto3, pandas, plotly, python-dotenv
+│   └── .streamlit/
+│       └── config.toml         ← dark theme matching project palette
 │
 ├── data/                       ← provided sample data (read-only)
 │   ├── streams/

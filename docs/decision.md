@@ -191,7 +191,22 @@ Explicitly deferred: Kinesis-based true streaming, Lake Formation fine-grained a
 - **Rationale.** `adaptive` mode implements a client-side token-bucket rate limiter that back-pressures before the server returns `ProvisionedThroughputExceededException`. Prevents cascading retries that worsen the throttle. Directly satisfies the brief's *robust error handling* criterion.
 - **Trade-offs.** `adaptive` mode adds slight CPU overhead tracking the token bucket — negligible in a Python Shell job.
 
-## D-28 · Simple UI Dashboard Added (not in original brief)
+## D-28 · UI Dashboard Added (not in original brief)
+- **Context.** The brief does not mention a UI, but all five user stories benefit from a point-and-click interface for testing without requiring AWS console access or CLI knowledge.
+- **Choice (original).** Vanilla HTML/CSS/JS single-page app — `ui/index.html`. Superseded by D-28-R below.
+- **Rationale for original choice.** No build step; Chart.js via CDN; anyone can open it.
+
+## D-28-R · UI Technology Revised: Vanilla HTML → Streamlit
+- **Supersedes.** D-28 (vanilla HTML implementation — `ui/index.html` deleted).
+- **Choice.** **Streamlit** Python app in `ui/` directory. Multi-page layout: `app.py` (home), `pages/1_Pipeline.py`, `pages/2_KPI_Dashboard.py`. Shared helpers in `ui/lib/`.
+- **Rationale.**
+  1. Python — same language as every other component; no context switch.
+  2. `boto3` calls DynamoDB directly — **no API Gateway or intermediary Lambda needed**. Removes a full service layer from Sprint 6 scope.
+  3. `st.metric`, `st.bar_chart`, `st.dataframe` give a polished data interface in tens of lines.
+  4. Mock mode via `lib/mock_data.py` when credentials are absent — identical to the original plan.
+  5. Deploy path: local (`streamlit run`) → Streamlit Community Cloud (free, shareable) → ECS Fargate (v2).
+- **Trade-offs.** Streamlit is not a high-concurrency web framework. Acceptable — this is an ops/BI tool, not a customer-facing product.
+- **Brief alignment.** "Documentation — step-by-step documentation on setting up and running the pipeline" and "Sample queries for retrieving insights from DynamoDB" — the UI is a richer, interactive version of both.
 - **Context.** The brief does not mention a UI, but all five user stories benefit from a point-and-click interface for testing without requiring AWS console access or CLI knowledge.
 - **Choice.** Vanilla HTML/CSS/JS single-page app in `ui/index.html`. No framework, no build step. Chart.js via CDN for KPI visualisation. API backed by API Gateway + Lambda in Sprint 6; mock mode for local dev.
 - **Rationale.** Lowers the barrier to demonstrating the full pipeline end-to-end (file upload → pipeline status → KPI query). Maps directly to all five user stories. Vanilla HTML keeps the implementation cost low and reviewable without toolchain setup.

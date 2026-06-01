@@ -103,6 +103,19 @@
 - **`pytest-spark`** — https://github.com/malexer/pytest-spark
 - **`moto` (mock AWS)** — https://docs.getmoto.org/
 
+## 4c. Streamlit (UI — D-28-R)
+
+- **Streamlit docs** — https://docs.streamlit.io
+- **Multipage apps** — https://docs.streamlit.io/library/get-started/multipage-apps
+- **`st.plotly_chart`** — https://docs.streamlit.io/library/api-reference/charts/st.plotly_chart
+- **`st.bar_chart`** — https://docs.streamlit.io/library/api-reference/charts/st.bar_chart
+- **`st.metric`** — https://docs.streamlit.io/library/api-reference/data/st.metric
+- **`st.dataframe`** — https://docs.streamlit.io/library/api-reference/data/st.dataframe
+- **`st.file_uploader`** — https://docs.streamlit.io/library/api-reference/widgets/st.file_uploader
+- **`st.session_state`** — https://docs.streamlit.io/library/advanced-features/session-state
+- **Streamlit Community Cloud deploy** — https://docs.streamlit.io/streamlit-community-cloud/deploy-your-app
+- **`plotly`** — https://plotly.com/python/
+
 ## 4b. Security Scanning (added per `.ai/review.md` §6)
 
 - **Snyk Code (Python SAST)** — https://docs.snyk.io/scan-with-snyk/snyk-code
