@@ -191,6 +191,13 @@ Explicitly deferred: Kinesis-based true streaming, Lake Formation fine-grained a
 - **Rationale.** `adaptive` mode implements a client-side token-bucket rate limiter that back-pressures before the server returns `ProvisionedThroughputExceededException`. Prevents cascading retries that worsen the throttle. Directly satisfies the brief's *robust error handling* criterion.
 - **Trade-offs.** `adaptive` mode adds slight CPU overhead tracking the token bucket — negligible in a Python Shell job.
 
+## D-28 · Simple UI Dashboard Added (not in original brief)
+- **Context.** The brief does not mention a UI, but all five user stories benefit from a point-and-click interface for testing without requiring AWS console access or CLI knowledge.
+- **Choice.** Vanilla HTML/CSS/JS single-page app in `ui/index.html`. No framework, no build step. Chart.js via CDN for KPI visualisation. API backed by API Gateway + Lambda in Sprint 6; mock mode for local dev.
+- **Rationale.** Lowers the barrier to demonstrating the full pipeline end-to-end (file upload → pipeline status → KPI query). Maps directly to all five user stories. Vanilla HTML keeps the implementation cost low and reviewable without toolchain setup.
+- **Trade-offs.** No framework = manual DOM updates. Acceptable at this scale; upgrade to React in v2 if the dashboard grows.
+- **Brief alignment.** "Documentation — step-by-step documentation on setting up and running the pipeline" and "Sample queries for retrieving insights from DynamoDB" — the UI is a richer version of both.
+
 ## D-27 · VPC + S3/DynamoDB Gateway Endpoints — Stub on Day 1 (partial accept)
 - **Context.** D-15 in the original plan and `terraform.md` both deferred VPC endpoints to v2.
 - **Reviewer's claim.** Add endpoints on Day 1 to prevent future NAT Gateway charges.
