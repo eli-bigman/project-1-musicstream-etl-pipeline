@@ -77,6 +77,9 @@ The repo separates **infrastructure**, **application code**, **tests**, and **do
 │       ├── bad_listen_time.csv
 │       └── unknown_user_id.csv
 │
+├── ui/                         ← standalone HTML/JS KPI dashboard (D-28)
+│   └── index.html              ← single-page app; mock mode + live API mode
+│
 ├── data/                       ← provided sample data (read-only)
 │   ├── streams/
 │   ├── songs/
