@@ -17,9 +17,12 @@ venv/
 override.tf
 override.tf.json
 
-# Environment & secrets
+# Environment & secrets — ignore actual .env files but keep .env.example
 .env
-.env.*
+.env.local
+.env.*.local
+.env.dev
+.env.prod
 *.pem
 *.key
 credentials
