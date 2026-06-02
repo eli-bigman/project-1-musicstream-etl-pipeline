@@ -1,0 +1,11 @@
+output "raw_bucket_name"       { value = module.data_lake.raw_bucket_name }
+output "archive_bucket_name"   { value = module.data_lake.archive_bucket_name }
+output "quarantine_bucket_name"{ value = module.data_lake.quarantine_bucket_name }
+output "scripts_bucket_name"   { value = module.data_lake.scripts_bucket_name }
+output "reference_bucket_name" { value = module.data_lake.reference_bucket_name }
+output "genre_daily_table"     { value = module.ddb.genre_daily_table_name }
+output "top_songs_table"       { value = module.ddb.top_songs_daily_table_name }
+output "top_genres_table"      { value = module.ddb.top_genres_daily_table_name }
+output "state_machine_arn"     { value = module.sm.state_machine_arn }
+output "sqs_buffer_queue_url"  { value = module.sqs.queue_url }
+output "lambda_validator_arn"  { value = module.lambda_validator.function_arn }
