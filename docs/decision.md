@@ -216,3 +216,11 @@ Explicitly deferred: Kinesis-based true streaming, Lake Formation fine-grained a
 - **Rationale.** The reviewer's point is sound in principle; the partial accept avoids adding live VPC infrastructure for no current benefit while keeping the path paved.
 - **Trade-offs.** Slightly more Terraform module surface to maintain. Mitigated by the `enabled` flag keeping it off by default.
 - **Reversibility.** High.
+
+## D-29 · songs.csv `track_id` Uniqueness — No Dedup Required
+- **Context.** The advisor review raised the concern that, in the Spotify dataset, `track_id` sometimes repeats across genres, which would cause a broadcast join to multiply stream rows and silently inflate every KPI.
+- **Finding.** Verified: `songs.csv` contains **89,741 rows** with **89,741 unique `track_id` values** — zero duplicates. The broadcast join `streams.join(broadcast(songs), on="track_id", how="left")` is safe without a dedup step.
+- **Choice.** No dedup applied before the broadcast join.
+- **Rationale.** Empirical check eliminates the risk. Recorded here so future agents do not add unnecessary dedup logic, and so that if the reference data is ever refreshed with a different songs dataset, this check must be re-run.
+- **Trade-offs.** None — removing a no-op is strictly better.
+- **Reversibility.** If a new songs dataset introduces duplicates: add `.dropDuplicates(["track_id"])` after reading reference Parquet in `transform_kpis.py`. Record as D-29-R.
