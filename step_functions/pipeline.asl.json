@@ -1,0 +1,207 @@
+{
+  "Comment": "MusicStream ETL Pipeline. One execution per micro-batch of S3 keys from EventBridge Pipe.",
+  "StartAt": "ParseInput",
+  "States": {
+
+    "ParseInput": {
+      "Type": "Pass",
+      "Comment": "Extract bucket + keys list from Pipe payload; inject run_id from execution name.",
+      "Parameters": {
+        "bucket.$": "$.detail.bucket.name",
+        "keys.$": "$.detail.object.keys",
+        "run_id.$": "$$.Execution.Name"
+      },
+      "ResultPath": "$.ctx",
+      "Next": "ValidateSchema"
+    },
+
+    "ValidateSchema": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "${validate_schema_function}",
+        "Payload": {
+          "bucket.$": "$.ctx.bucket",
+          "keys.$":   "$.ctx.keys",
+          "run_id.$": "$.ctx.run_id"
+        }
+      },
+      "ResultSelector": {
+        "valid_keys.$":    "$.Payload.valid_keys",
+        "invalid_keys.$":  "$.Payload.invalid_keys",
+        "detected_dates.$":"$.Payload.detected_dates",
+        "bucket.$":        "$.Payload.bucket"
+      },
+      "ResultPath": "$.validation",
+      "Retry": [
+        {
+          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
+          "IntervalSeconds": 5,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "AllValid"
+    },
+
+    "AllValid": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.validation.valid_keys[0]",
+          "IsPresent": true,
+          "Next": "TransformAndCompute"
+        }
+      ],
+      "Default": "NoValidFiles"
+    },
+
+    "NoValidFiles": {
+      "Type": "Succeed",
+      "Comment": "All files in this batch were invalid — quarantine handled by Lambda. Success to avoid false alarms."
+    },
+
+    "TransformAndCompute": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${transform_kpis_job}",
+        "Arguments": {
+          "--valid_keys.$":       "States.JsonToString($.validation.valid_keys)",
+          "--bucket.$":           "$.ctx.bucket",
+          "--reference_bucket":   "${raw_bucket}",
+          "--kpi_output_bucket":  "${raw_bucket}",
+          "--quarantine_bucket":  "${quarantine_bucket}",
+          "--run_id.$":           "$.ctx.run_id",
+          "--env":                "dev"
+        }
+      },
+      "ResultSelector": {
+        "kpi_parquet_root.$": "$.Output.kpi_parquet_root",
+        "target_dates.$":     "$.Output.target_dates"
+      },
+      "ResultPath": "$.transform",
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.ConcurrentRunsExceededException"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 5,
+          "BackoffRate": 2.0
+        },
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 1
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "LoadDynamoDB"
+    },
+
+    "LoadDynamoDB": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${load_dynamodb_job}",
+        "Arguments": {
+          "--kpi_parquet_root.$": "$.transform.kpi_parquet_root",
+          "--run_id.$":           "$.ctx.run_id",
+          "--env":                "dev"
+        }
+      },
+      "ResultPath": "$.load",
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "ArchiveBatch"
+    },
+
+    "ArchiveBatch": {
+      "Type": "Map",
+      "ItemsPath": "$.validation.valid_keys",
+      "MaxConcurrency": 10,
+      "Iterator": {
+        "StartAt": "CopyToArchive",
+        "States": {
+          "CopyToArchive": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
+            "Parameters": {
+              "Bucket": "${archive_bucket}",
+              "CopySource.$": "States.Format('{}/{}', $$.Execution.Input.ctx.bucket, $)",
+              "Key.$": "$"
+            },
+            "ResultPath": null,
+            "Next": "DeleteFromRaw"
+          },
+          "DeleteFromRaw": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::aws-sdk:s3:deleteObject",
+            "Parameters": {
+              "Bucket.$": "$$.Execution.Input.ctx.bucket",
+              "Key.$": "$"
+            },
+            "End": true
+          }
+        }
+      },
+      "ResultPath": "$.archive",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.error",
+          "Next": "HandleFailure"
+        }
+      ],
+      "Next": "Success"
+    },
+
+    "HandleFailure": {
+      "Type": "Pass",
+      "Comment": "Capture failure context for the quarantine step.",
+      "Parameters": {
+        "run_id.$":   "$$.Execution.Name",
+        "error.$":    "$.error",
+        "bucket.$":   "$.ctx.bucket"
+      },
+      "ResultPath": "$.failure",
+      "Next": "Fail"
+    },
+
+    "Success": {
+      "Type": "Succeed"
+    },
+
+    "Fail": {
+      "Type": "Fail",
+      "Error": "PipelineFailure",
+      "Cause": "One or more pipeline stages failed. Check CloudWatch logs and quarantine bucket."
+    }
+
+  }
+}
