@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          pip install --quiet ruff black pytest pytest-mock moto[s3,dynamodb] boto3 pyarrow pandas pydantic
+
+      - name: Ruff lint
+        run: ruff check glue/ lambda/ ui/ tests/
+
+      - name: Black format check
+        run: black --check glue/ lambda/ ui/ tests/
+
+      - name: SAST — semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/python
+        continue-on-error: false
+
+      - name: Unit tests
+        run: pytest tests/unit -q
+
+      - name: Integration tests
+        run: pytest tests/integration -q
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform fmt check
+        run: terraform fmt -check -recursive infra/
+
+      - name: Bootstrap validate
+        run: |
+          terraform -chdir=infra/bootstrap init -backend=false
+          terraform -chdir=infra/bootstrap validate
+
+      - name: Dev env validate
+        run: |
+          terraform -chdir=infra/envs/dev init -backend=false
+          terraform -chdir=infra/envs/dev validate
+
+      - name: Checkov IaC scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/
+          quiet: true
+          soft_fail: false

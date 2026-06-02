@@ -1,0 +1,46 @@
+name: CD — Dev Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-dev:
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform apply dev
+        run: |
+          terraform -chdir=infra/envs/dev init
+          terraform -chdir=infra/envs/dev apply -auto-approve
+
+      - name: Build and upload Glue wheel
+        run: |
+          cd glue
+          pip install build
+          python -m build --wheel
+          aws s3 cp dist/shared-0.1.0-py3-none-any.whl \
+            s3://musicstream-dev-scripts/glue/shared/shared-0.1.0-py3-none-any.whl
+          aws s3 sync . s3://musicstream-dev-scripts/glue/ \
+            --exclude "*" --include "*.py" --delete
+          cd ..
+
+      - name: Post-deploy smoke test
+        run: pytest tests/e2e -q -m smoke
+        env:
+          ENV: dev
+          AWS_REGION: eu-west-1
