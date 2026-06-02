@@ -59,8 +59,13 @@ def test_bad_listen_time_fails():
 
 
 def test_future_listen_time_passes_t1():
-    """Future listen_time is a parseable date — T1 passes. T2 drops in PySpark."""
-    result = _run(FUTURE_TIME)
+    """Future listen_time is a parseable date — T1 passes when partition key is omitted.
+    T2 drops these rows in PySpark (future listen_time filter).
+    Note: if filed under a mismatched partition (e.g. yyyy=2024 but date=2099), T1
+    catches the partition mismatch first — see test_wrong_partition_date_fails.
+    """
+    # Use a key without partition prefix so T1 only checks parseability, not partition match.
+    result = _run(FUTURE_TIME, key="streams/unpartitioned/future.csv")
     assert len(result["valid_keys"]) == 1
 
 

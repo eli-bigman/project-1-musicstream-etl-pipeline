@@ -42,9 +42,9 @@ def test_valid_file_returns_in_valid_keys(mock_s3):
 
 
 @patch.object(handler, "_s3")
+@patch.object(handler, "QUARANTINE_BUCKET", "test-quarantine")
 def test_missing_column_quarantined(mock_s3):
     mock_s3.get_object.return_value = _make_s3_response(MISSING_COL_CSV)
-    os.environ["QUARANTINE_BUCKET"] = "test-quarantine"
     result = handler.lambda_handler(
         {"bucket": "test-bucket", "keys": ["streams/missing.csv"], "run_id": "r1"},
         None,

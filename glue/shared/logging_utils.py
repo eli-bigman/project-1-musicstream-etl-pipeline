@@ -44,10 +44,12 @@ class StructuredLogger:
     def __init__(self, name: str, run_id: str, stage: str, level: int = logging.INFO):
         self._logger = logging.getLogger(name)
         self._logger.setLevel(level)
-        if not self._logger.handlers:
-            handler = logging.StreamHandler(sys.stdout)
-            handler.setFormatter(_JsonFormatter(run_id, stage))
-            self._logger.addHandler(handler)
+        # Replace any existing handlers so each call to get_logger() gets fresh
+        # formatter state — avoids stale run_id/stage from a previous call.
+        self._logger.handlers = []
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(_JsonFormatter(run_id, stage))
+        self._logger.addHandler(handler)
 
     def _log(self, level: int, event: str, **extra: Any) -> None:
         record = self._logger.makeRecord(
