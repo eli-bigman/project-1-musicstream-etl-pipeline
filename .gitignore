@@ -44,3 +44,6 @@ htmlcov/
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Personal learning guides (local only)
+TERRAFORM_GUIDE.md
