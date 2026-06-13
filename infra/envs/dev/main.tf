@@ -147,3 +147,24 @@ module "vpc_stub" {
   enabled     = var.vpc_stub_enabled
   common_tags = local.common_tags
 }
+
+# ── Monitoring — CloudWatch alarms + dashboard (Sprint 7) ─────────────────────
+
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  env         = local.env
+  common_tags = local.common_tags
+
+  sqs_dlq_url  = module.sqs.dlq_url
+  sqs_dlq_name = module.sqs.dlq_name
+
+  state_machine_arn = module.sm.state_machine_arn
+
+  lambda_function_name = module.lambda_validator.function_name
+
+  glue_transform_job_name = module.glue_jobs.transform_kpis_job_name
+  glue_load_job_name      = module.glue_jobs.load_dynamodb_job_name
+
+  alarm_email = var.alarm_email
+}

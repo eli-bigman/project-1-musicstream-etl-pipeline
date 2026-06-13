@@ -28,3 +28,9 @@ variable "lambda_version" {
   type    = string
   default = "0.1.0"
 }
+
+variable "alarm_email" {
+  type        = string
+  description = "Email that receives CloudWatch alarm notifications"
+  default     = "richard.nutsugah@amalitechtraining.org"
+}
