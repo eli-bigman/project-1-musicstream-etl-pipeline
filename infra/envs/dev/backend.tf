@@ -14,6 +14,7 @@ terraform {
 
 provider "aws" {
   region = var.region
+  # Uses default AWS credential chain (same personal account 647594457599)
   default_tags {
     tags = {
       Project   = var.project

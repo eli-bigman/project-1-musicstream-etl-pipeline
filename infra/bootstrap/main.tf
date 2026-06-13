@@ -7,6 +7,8 @@ terraform {
 
 provider "aws" {
   region = var.region
+  # Uses default AWS credential chain (terraform_user static keys in ~/.aws/credentials)
+  # Same account (647594457599) as the personal profile.
 }
 
 resource "aws_s3_bucket" "tfstate" {
