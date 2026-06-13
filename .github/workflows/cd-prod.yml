@@ -1,0 +1,92 @@
+name: CD — Prod Deploy
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+jobs:
+  plan-prod:
+    runs-on: ubuntu-latest
+    environment: prod-plan
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      plan_exitcode: ${{ steps.plan.outputs.exitcode }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Terraform plan prod
+        id: plan
+        run: |
+          terraform -chdir=infra/envs/prod init
+          terraform -chdir=infra/envs/prod plan -detailed-exitcode -out=prod.plan
+          echo "exitcode=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-plan
+          path: infra/envs/prod/prod.plan
+          retention-days: 1
+
+  apply-prod:
+    needs: plan-prod
+    runs-on: ubuntu-latest
+    # Requires a GitHub environment named "prod" with a required reviewer — this is the manual gate.
+    environment: prod
+    if: needs.plan-prod.outputs.plan_exitcode == '2' # 2 = changes present
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_PROD_DEPLOY_ROLE_ARN }}
+          aws-region: eu-west-1
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.6"
+
+      - name: Download plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: prod-plan
+          path: infra/envs/prod/
+
+      - name: Terraform init prod
+        run: terraform -chdir=infra/envs/prod init
+
+      - name: Terraform apply prod
+        run: terraform -chdir=infra/envs/prod apply infra/envs/prod/prod.plan
+
+      - name: Build and upload Glue wheel
+        run: |
+          cd glue
+          pip install build
+          python -m build --wheel
+          aws s3 cp dist/shared-0.1.0-py3-none-any.whl \
+            s3://musicstream-prod-scripts/glue/shared/shared-0.1.0-py3-none-any.whl
+          aws s3 sync . s3://musicstream-prod-scripts/glue/ \
+            --exclude "*" --include "*.py" --delete
+          cd ..
+
+      - name: Post-deploy smoke test
+        run: pytest tests/e2e -q -m smoke
+        env:
+          ENV: prod
+          AWS_REGION: eu-west-1
