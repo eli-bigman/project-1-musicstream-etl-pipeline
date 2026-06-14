@@ -167,4 +167,5 @@ module "monitoring" {
   glue_load_job_name      = module.glue_jobs.load_dynamodb_job_name
 
   alarm_email = var.alarm_email
+  kms_key_arn = module.kms_data.key_arn
 }

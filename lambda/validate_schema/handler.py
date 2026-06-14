@@ -116,7 +116,7 @@ def _validate_one(bucket: str, key: str, run_id: str) -> tuple[bool, str, str | 
         return False, "", "duplicate_header_names"
 
     # Check at least one data row
-    data_lines = [l for l in lines[1:] if l.strip()]
+    data_lines = [ln for ln in lines[1:] if ln.strip()]
     if not data_lines:
         return False, "", "zero_data_rows"
 
@@ -144,7 +144,11 @@ def _validate_one(bucket: str, key: str, run_id: str) -> tuple[bool, str, str | 
             dd_part = next(p for p in parts if p.startswith("dd="))
             key_date = f"{year_part[5:]}-{mm_part[3:]}-{dd_part[3:]}"
             if key_date != detected_date:
-                return False, "", f"partition_date_mismatch: key={key_date} data={detected_date}"
+                return (
+                    False,
+                    "",
+                    f"partition_date_mismatch: key={key_date} data={detected_date}",
+                )
         except StopIteration:
             pass  # No partition prefix in key — not an error
 

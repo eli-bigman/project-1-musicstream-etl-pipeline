@@ -7,16 +7,57 @@ can be tested without a live AWS account.
 from datetime import date, timedelta
 
 _TODAY = date(2024, 6, 25)
-_GENRES = ["pop", "rock", "hip-hop", "jazz", "classical", "electronic", "r&b", "country", "metal", "acoustic"]
+_GENRES = [
+    "pop",
+    "rock",
+    "hip-hop",
+    "jazz",
+    "classical",
+    "electronic",
+    "r&b",
+    "country",
+    "metal",
+    "acoustic",
+]
 
 
 def mock_top_genres(query_date: str) -> list[dict]:
     return [
-        {"date": query_date, "rank": 1, "genre": "pop",        "listen_count": 8421, "updated_at": "2024-06-25T18:34:00Z"},
-        {"date": query_date, "rank": 2, "genre": "rock",       "listen_count": 6213, "updated_at": "2024-06-25T18:34:00Z"},
-        {"date": query_date, "rank": 3, "genre": "hip-hop",    "listen_count": 5870, "updated_at": "2024-06-25T18:34:00Z"},
-        {"date": query_date, "rank": 4, "genre": "jazz",       "listen_count": 4502, "updated_at": "2024-06-25T18:34:00Z"},
-        {"date": query_date, "rank": 5, "genre": "electronic", "listen_count": 3987, "updated_at": "2024-06-25T18:34:00Z"},
+        {
+            "date": query_date,
+            "rank": 1,
+            "genre": "pop",
+            "listen_count": 8421,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
+        {
+            "date": query_date,
+            "rank": 2,
+            "genre": "rock",
+            "listen_count": 6213,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
+        {
+            "date": query_date,
+            "rank": 3,
+            "genre": "hip-hop",
+            "listen_count": 5870,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
+        {
+            "date": query_date,
+            "rank": 4,
+            "genre": "jazz",
+            "listen_count": 4502,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
+        {
+            "date": query_date,
+            "rank": 5,
+            "genre": "electronic",
+            "listen_count": 3987,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
     ]
 
 
@@ -50,37 +91,76 @@ def mock_genre_kpi(genre: str, query_date: str) -> dict:
 
 def mock_top_songs(genre: str, query_date: str) -> list[dict]:
     return [
-        {"genre": genre, "date_rank": f"{query_date}#01", "track_id": "TRACK_A1", "track_name": "Thunder Road", "plays": 412, "updated_at": "2024-06-25T18:34:00Z"},
-        {"genre": genre, "date_rank": f"{query_date}#02", "track_id": "TRACK_A2", "track_name": "Dancing Queen", "plays": 387, "updated_at": "2024-06-25T18:34:00Z"},
-        {"genre": genre, "date_rank": f"{query_date}#03", "track_id": "TRACK_A3", "track_name": "Billie Jean",   "plays": 354, "updated_at": "2024-06-25T18:34:00Z"},
+        {
+            "genre": genre,
+            "date_rank": f"{query_date}#01",
+            "track_id": "TRACK_A1",
+            "track_name": "Thunder Road",
+            "plays": 412,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
+        {
+            "genre": genre,
+            "date_rank": f"{query_date}#02",
+            "track_id": "TRACK_A2",
+            "track_name": "Dancing Queen",
+            "plays": 387,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
+        {
+            "genre": genre,
+            "date_rank": f"{query_date}#03",
+            "track_id": "TRACK_A3",
+            "track_name": "Billie Jean",
+            "plays": 354,
+            "updated_at": "2024-06-25T18:34:00Z",
+        },
     ]
 
 
 def mock_genre_trend(genre: str, start_date: str, end_date: str) -> list[dict]:
     from datetime import datetime
+
     start = datetime.fromisoformat(start_date).date()
     end = datetime.fromisoformat(end_date).date()
     rows = []
     d = start
     while d <= end:
-        rows.append({
-            "genre": genre,
-            "date": d.isoformat(),
-            "listen_count": 6000 + (hash(d.isoformat()) % 2000),
-            "unique_listeners": 2500 + (hash(d.isoformat() + "u") % 800),
-            "total_listening_time_ms": 80_000_000,
-            "avg_listening_time_per_user_ms": 32000,
-            "updated_at": "2024-06-25T18:34:00Z",
-        })
+        rows.append(
+            {
+                "genre": genre,
+                "date": d.isoformat(),
+                "listen_count": 6000 + (hash(d.isoformat()) % 2000),
+                "unique_listeners": 2500 + (hash(d.isoformat() + "u") % 800),
+                "total_listening_time_ms": 80_000_000,
+                "avg_listening_time_per_user_ms": 32000,
+                "updated_at": "2024-06-25T18:34:00Z",
+            }
+        )
         d += timedelta(days=1)
     return rows
 
 
 def mock_recent_executions() -> list[dict]:
     return [
-        {"name": "exec-2024-06-25-001", "status": "SUCCEEDED", "startDate": "2024-06-25T18:30:00Z", "stopDate": "2024-06-25T18:32:05Z"},
-        {"name": "exec-2024-06-25-002", "status": "RUNNING",   "startDate": "2024-06-25T18:35:00Z", "stopDate": None},
-        {"name": "exec-2024-06-24-003", "status": "FAILED",    "startDate": "2024-06-24T09:12:00Z", "stopDate": "2024-06-24T09:12:45Z"},
+        {
+            "name": "exec-2024-06-25-001",
+            "status": "SUCCEEDED",
+            "startDate": "2024-06-25T18:30:00Z",
+            "stopDate": "2024-06-25T18:32:05Z",
+        },
+        {
+            "name": "exec-2024-06-25-002",
+            "status": "RUNNING",
+            "startDate": "2024-06-25T18:35:00Z",
+            "stopDate": None,
+        },
+        {
+            "name": "exec-2024-06-24-003",
+            "status": "FAILED",
+            "startDate": "2024-06-24T09:12:00Z",
+            "stopDate": "2024-06-24T09:12:45Z",
+        },
     ]
 
 

@@ -7,8 +7,9 @@ terraform {
 # ── SNS topic for all pipeline alarms ─────────────────────────────────────────
 
 resource "aws_sns_topic" "pipeline_alarms" {
-  name = "${var.env}-pipeline-alarms"
-  tags = var.common_tags
+  name              = "${var.env}-pipeline-alarms"
+  kms_master_key_id = var.kms_key_arn
+  tags              = var.common_tags
 }
 
 resource "aws_sns_topic_subscription" "email" {

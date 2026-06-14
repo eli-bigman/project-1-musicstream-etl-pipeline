@@ -64,7 +64,6 @@ def quarantine_file(
     reason: str,
 ) -> None:
     """Copy a file to quarantine and write a _reason.json sidecar."""
-    import json
 
     s3 = _s3_client()
     dest_key = src_key

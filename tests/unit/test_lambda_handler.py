@@ -1,20 +1,22 @@
 """Unit tests for lambda/validate_schema/handler.py."""
 
 import io
-import json
 import os
 import sys
 from unittest.mock import MagicMock, patch
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lambda", "validate_schema"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "lambda", "validate_schema")
+)
 
 import handler
 
-
-VALID_CSV_BYTES = b"user_id,track_id,listen_time\n26213,4dBa8T7oDV9WvGr7kVS4Ez,2024-06-25 17:43:13\n"
+VALID_CSV_BYTES = (
+    b"user_id,track_id,listen_time\n26213,4dBa8T7oDV9WvGr7kVS4Ez,2024-06-25 17:43:13\n"
+)
 MISSING_COL_CSV = b"user_id,listen_time\n26213,2024-06-25 17:43:13\n"
-BAD_TIME_CSV    = b"user_id,track_id,listen_time\n26213,ABC,nope\n"
-EMPTY_DATA_CSV  = b"user_id,track_id,listen_time\n"
+BAD_TIME_CSV = b"user_id,track_id,listen_time\n26213,ABC,nope\n"
+EMPTY_DATA_CSV = b"user_id,track_id,listen_time\n"
 
 
 def _make_s3_response(body: bytes) -> dict:
@@ -33,7 +35,11 @@ def _mock_s3(body: bytes):
 def test_valid_file_returns_in_valid_keys(mock_s3):
     mock_s3.get_object.return_value = _make_s3_response(VALID_CSV_BYTES)
     result = handler.lambda_handler(
-        {"bucket": "test-bucket", "keys": ["streams/yyyy=2024/mm=06/dd=25/file.csv"], "run_id": "test-run"},
+        {
+            "bucket": "test-bucket",
+            "keys": ["streams/yyyy=2024/mm=06/dd=25/file.csv"],
+            "run_id": "test-run",
+        },
         None,
     )
     assert result["valid_keys"] == ["streams/yyyy=2024/mm=06/dd=25/file.csv"]
@@ -79,6 +85,7 @@ def test_empty_data_rows_quarantined(mock_s3):
 @patch.object(handler, "_s3")
 def test_mixed_batch(mock_s3):
     """One valid, one invalid in the same batch."""
+
     def side_effect(Bucket, Key, Range=""):
         if "valid" in Key:
             return _make_s3_response(VALID_CSV_BYTES)
@@ -87,7 +94,11 @@ def test_mixed_batch(mock_s3):
     mock_s3.get_object.side_effect = side_effect
     os.environ["QUARANTINE_BUCKET"] = "test-quarantine"
     result = handler.lambda_handler(
-        {"bucket": "b", "keys": ["streams/valid.csv", "streams/bad.csv"], "run_id": "r"},
+        {
+            "bucket": "b",
+            "keys": ["streams/valid.csv", "streams/bad.csv"],
+            "run_id": "r",
+        },
         None,
     )
     assert len(result["valid_keys"]) == 1

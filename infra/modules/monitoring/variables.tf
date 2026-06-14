@@ -42,6 +42,11 @@ variable "alarm_email" {
   description = "Email address to receive alarm notifications"
 }
 
+variable "kms_key_arn" {
+  type        = string
+  description = "KMS key ARN used to encrypt the SNS topic at rest"
+}
+
 variable "log_retention_days" {
   type    = number
   default = 30

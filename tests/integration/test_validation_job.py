@@ -1,7 +1,6 @@
 """Integration tests for the Lambda schema validation using moto S3."""
 
 import io
-import json
 import os
 import sys
 from unittest.mock import patch, MagicMock
@@ -11,11 +10,15 @@ os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
 os.environ["QUARANTINE_BUCKET"] = "test-quarantine"
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "lambda", "validate_schema"))
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "lambda", "validate_schema")
+)
 
 import handler
 
-VALID_CSV = b"user_id,track_id,listen_time\n26213,4dBa8T7oDV9WvGr7kVS4Ez,2024-06-25 17:43:13\n"
+VALID_CSV = (
+    b"user_id,track_id,listen_time\n26213,4dBa8T7oDV9WvGr7kVS4Ez,2024-06-25 17:43:13\n"
+)
 MISSING_TRACK_ID = b"user_id,listen_time\n26213,2024-06-25 17:43:13\n"
 BAD_LISTEN_TIME = b"user_id,track_id,listen_time\n26213,ABC,not-a-date\n"
 FUTURE_TIME = b"user_id,track_id,listen_time\n26213,ABC,2099-01-01 00:00:00\n"
