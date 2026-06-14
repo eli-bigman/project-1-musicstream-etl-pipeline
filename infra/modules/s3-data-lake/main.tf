@@ -5,12 +5,13 @@ terraform {
 }
 
 locals {
+  suffix = var.bucket_suffix != "" ? "-${var.bucket_suffix}" : ""
   buckets = {
-    raw        = "${var.project}-${var.env}-raw"
-    archive    = "${var.project}-${var.env}-archive"
-    quarantine = "${var.project}-${var.env}-quarantine"
-    scripts    = "${var.project}-${var.env}-scripts"
-    reference  = "${var.project}-${var.env}-reference"
+    raw        = "${var.project}-${var.env}-raw${local.suffix}"
+    archive    = "${var.project}-${var.env}-archive${local.suffix}"
+    quarantine = "${var.project}-${var.env}-quarantine${local.suffix}"
+    scripts    = "${var.project}-${var.env}-scripts${local.suffix}"
+    reference  = "${var.project}-${var.env}-reference${local.suffix}"
   }
 }
 

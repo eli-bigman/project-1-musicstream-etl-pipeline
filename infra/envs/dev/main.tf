@@ -34,6 +34,7 @@ module "data_lake" {
   kms_key_arn   = module.kms_data.key_arn
   common_tags   = local.common_tags
   force_destroy = true # ephemeral dev — allow non-empty bucket destroy
+  bucket_suffix = var.bucket_suffix
 }
 
 # ── DynamoDB KPI Tables ────────────────────────────────────────────────────────
@@ -123,6 +124,7 @@ module "sm" {
   archive_bucket_name          = module.data_lake.archive_bucket_name
   quarantine_bucket_name       = module.data_lake.quarantine_bucket_name
   raw_bucket_name              = module.data_lake.raw_bucket_name
+  reference_bucket_name        = module.data_lake.reference_bucket_name
   kms_key_arn                  = module.kms_data.key_arn
   common_tags                  = local.common_tags
 }
