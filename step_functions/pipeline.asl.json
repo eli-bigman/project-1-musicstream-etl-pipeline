@@ -76,7 +76,7 @@
         "Arguments": {
           "--valid_keys.$":       "States.JsonToString($.validation.valid_keys)",
           "--bucket.$":           "$.ctx.bucket",
-          "--reference_bucket":   "${raw_bucket}",
+          "--reference_bucket":   "${reference_bucket}",
           "--kpi_output_bucket":  "${raw_bucket}",
           "--quarantine_bucket":  "${quarantine_bucket}",
           "--run_id.$":           "$.ctx.run_id",

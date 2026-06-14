@@ -4,3 +4,4 @@ env                 = "dev"
 vpc_stub_enabled    = false
 pyspark_worker_type = "G.1X"
 lambda_version      = "0.1.0"
+bucket_suffix       = ""

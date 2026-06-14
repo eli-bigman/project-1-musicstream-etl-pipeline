@@ -22,6 +22,7 @@ resource "aws_sfn_state_machine" "pipeline" {
     archive_bucket           = var.archive_bucket_name
     quarantine_bucket        = var.quarantine_bucket_name
     raw_bucket               = var.raw_bucket_name
+    reference_bucket         = var.reference_bucket_name
   })
 
   logging_configuration {
