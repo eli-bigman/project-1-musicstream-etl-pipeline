@@ -2,7 +2,7 @@
 # Each skipped check has a documented rationale below.
 # Review before promoting to prod — some skips are dev-only trade-offs.
 
-skip_checks:
+skip-check:
   # ── CloudWatch Logs KMS ───────────────────────────────────────────────────────
   # CKV_AWS_158: CW Log Group KMS encryption
   # Rationale: Enabling kms_key_id on CW Log Groups requires a separate key policy

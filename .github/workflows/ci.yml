@@ -63,5 +63,6 @@ jobs:
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: infra/
+          config_file: .checkov.yaml
           quiet: true
           soft_fail: false
