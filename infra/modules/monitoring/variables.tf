@@ -1,9 +1,3 @@
-terraform {
-  required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.50" }
-  }
-}
-
 variable "env" { type = string }
 variable "common_tags" { type = map(string) }
 
