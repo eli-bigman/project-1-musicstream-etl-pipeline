@@ -3,7 +3,6 @@
 import json
 import os
 import time
-from datetime import datetime, timezone
 
 import boto3
 

@@ -34,9 +34,14 @@ except ImportError:
     import logging
 
     class _FallbackLogger:
-        def info(self, msg, **kw): logging.info(msg + " " + str(kw))
-        def warning(self, msg, **kw): logging.warning(msg + " " + str(kw))
-        def error(self, msg, **kw): logging.error(msg + " " + str(kw))
+        def info(self, msg, **kw):
+            logging.info(msg + " " + str(kw))
+
+        def warning(self, msg, **kw):
+            logging.warning(msg + " " + str(kw))
+
+        def error(self, msg, **kw):
+            logging.error(msg + " " + str(kw))
 
     def get_logger(run_id, stage):  # noqa: F811
         return _FallbackLogger()
@@ -44,22 +49,22 @@ except ImportError:
 
 REQUIRED_ARGS = [
     "JOB_NAME",
-    "valid_keys",       # JSON array of s3 keys (raw CSV)
-    "bucket",           # raw S3 bucket
-    "reference_bucket", # Parquet reference bucket
-    "kpi_output_bucket",# bucket where KPI parquets are written
+    "valid_keys",  # JSON array of s3 keys (raw CSV)
+    "bucket",  # raw S3 bucket
+    "reference_bucket",  # Parquet reference bucket
+    "kpi_output_bucket",  # bucket where KPI parquets are written
     "run_id",
     "env",
 ]
 
 OPTIONAL_DEFAULTS = {
-    "run_mode": "normal",     # "backfill" scales workers
+    "run_mode": "normal",  # "backfill" scales workers
     "quarantine_bucket": "",
 }
 
 # T3 business rule thresholds
 MAX_DURATION_MS = 1_800_000  # 30 minutes
-BOT_PLAY_THRESHOLD = 1000    # same track × user per day → likely bot
+BOT_PLAY_THRESHOLD = 1000  # same track × user per day → likely bot
 
 
 def _parse_args():
@@ -71,7 +76,6 @@ def _parse_args():
 
 
 def run(spark, args, logger):
-    sc = spark.sparkContext
     run_id = args["run_id"]
     raw_bucket = args["bucket"]
     kpi_bucket = args["kpi_output_bucket"]
@@ -94,9 +98,7 @@ def run(spark, args, logger):
     logger.info("reading_streams", run_id=run_id, file_count=len(raw_paths))
 
     streams = (
-        spark.read.option("header", True)
-        .option("inferSchema", False)
-        .csv(raw_paths)
+        spark.read.option("header", True).option("inferSchema", False).csv(raw_paths)
     )
 
     # Parse and extract listen_date
@@ -143,8 +145,9 @@ def run(spark, args, logger):
         )
         if quarantine_bucket:
             (
-                unmatched.write.mode("append")
-                .parquet(f"s3://{quarantine_bucket}/ref-fail/run_id={run_id}/")
+                unmatched.write.mode("append").parquet(
+                    f"s3://{quarantine_bucket}/ref-fail/run_id={run_id}/"
+                )
             )
 
     # ── T3: Business rules ────────────────────────────────────────────────────
@@ -180,17 +183,15 @@ def run(spark, args, logger):
     )
 
     # ── KPI 5: Top-3 songs per genre per day ─────────────────────────────────
-    song_counts = (
-        clean.groupBy("listen_date", "genre", "track_id", "track_name")
-        .agg(F.count("*").alias("plays"))
+    song_counts = clean.groupBy("listen_date", "genre", "track_id", "track_name").agg(
+        F.count("*").alias("plays")
     )
     # Tie-break by track_id for determinism (D-transformation_logic.md §4)
     w_songs = Window.partitionBy("listen_date", "genre").orderBy(
         F.desc("plays"), F.asc("track_id")
     )
-    top_songs = (
-        song_counts.withColumn("rank", F.row_number().over(w_songs))
-        .filter(F.col("rank") <= 3)
+    top_songs = song_counts.withColumn("rank", F.row_number().over(w_songs)).filter(
+        F.col("rank") <= 3
     )
 
     # ── KPI 6: Top-5 genres per day ──────────────────────────────────────────

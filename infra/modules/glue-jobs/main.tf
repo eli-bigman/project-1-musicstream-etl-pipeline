@@ -7,14 +7,14 @@ terraform {
 resource "aws_cloudwatch_log_group" "transform_kpis" {
   name              = "/aws/glue/jobs/${var.env}-transform-kpis"
   retention_in_days = var.log_retention_days
-  kms_key_id        = var.kms_key_arn
-  tags              = var.common_tags
+  # KMS encryption for CW Logs requires a separate key policy grant for logs.amazonaws.com;
+  # skipping for dev to avoid circular dependency complexity.
+  tags = var.common_tags
 }
 
 resource "aws_cloudwatch_log_group" "load_dynamodb" {
   name              = "/aws/glue/jobs/${var.env}-load-dynamodb"
   retention_in_days = var.log_retention_days
-  kms_key_id        = var.kms_key_arn
   tags              = var.common_tags
 }
 

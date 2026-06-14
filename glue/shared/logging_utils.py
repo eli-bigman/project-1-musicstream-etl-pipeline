@@ -10,7 +10,6 @@ import sys
 from datetime import datetime, timezone
 from typing import Any
 
-
 _PII_KEYS = frozenset({"user_name", "user_country"})
 
 

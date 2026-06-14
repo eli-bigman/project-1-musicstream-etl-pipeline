@@ -22,7 +22,7 @@ data "aws_iam_policy_document" "key_policy" {
 
 resource "aws_kms_key" "this" {
   description             = "${var.env}-${var.purpose}"
-  deletion_window_in_days = 14
+  deletion_window_in_days = 7
   enable_key_rotation     = true
   policy                  = data.aws_iam_policy_document.key_policy.json
 

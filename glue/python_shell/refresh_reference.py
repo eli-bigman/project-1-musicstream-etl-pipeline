@@ -3,16 +3,17 @@
 Run manually or on a low-cadence schedule when reference data is refreshed.
 """
 
+import os
 import sys
-from awsglue.utils import getResolvedOptions
-from shared.logging_utils import get_logger
+import tempfile
 
 import boto3
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import tempfile
-import os
+from awsglue.utils import getResolvedOptions
+
+from shared.logging_utils import get_logger
 
 REQUIRED_ARGS = ["JOB_NAME", "run_id", "reference_bucket", "env"]
 REF_FILES = ["users", "songs"]

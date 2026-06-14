@@ -8,20 +8,19 @@ import json
 import sys
 from urllib.parse import urlparse
 
+import boto3
 import pyarrow.parquet as pq
-
 from awsglue.utils import getResolvedOptions
+
 from shared.dynamo_utils import batch_write, shape_for_dynamo
 from shared.logging_utils import get_logger
 from shared.s3_utils import list_s3_keys
-
-import boto3
 
 REQUIRED_ARGS = [
     "JOB_NAME",
     "run_id",
     "env",
-    "kpi_parquet_root",     # e.g. s3://musicstream-dev-raw/kpi/
+    "kpi_parquet_root",  # e.g. s3://musicstream-dev-raw/kpi/
     "genre_daily_table",
     "top_songs_daily_table",
     "top_genres_daily_table",
@@ -35,7 +34,9 @@ def _iter_parquet_rows(bucket: str, prefix: str):
     for key in keys:
         if not (key.endswith(".parquet") or "part-" in key.split("/")[-1]):
             continue
-        import tempfile, os
+        import os
+        import tempfile
+
         local = os.path.join(tempfile.gettempdir(), key.split("/")[-1])
         s3.download_file(bucket, key, local)
         pf = pq.ParquetFile(local)
@@ -69,7 +70,7 @@ def main():
 
     totals = {}
     for kind, table_key in [
-        ("genre_daily",    "genre_daily_table"),
+        ("genre_daily", "genre_daily_table"),
         ("top_songs_daily", "top_songs_daily_table"),
         ("top_genres_daily", "top_genres_daily_table"),
     ]:

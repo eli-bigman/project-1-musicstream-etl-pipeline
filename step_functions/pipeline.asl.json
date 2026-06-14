@@ -83,10 +83,6 @@
           "--env":                "dev"
         }
       },
-      "ResultSelector": {
-        "kpi_parquet_root.$": "$.Output.kpi_parquet_root",
-        "target_dates.$":     "$.Output.target_dates"
-      },
       "ResultPath": "$.transform",
       "Retry": [
         {
@@ -117,9 +113,9 @@
       "Parameters": {
         "JobName": "${load_dynamodb_job}",
         "Arguments": {
-          "--kpi_parquet_root.$": "$.transform.kpi_parquet_root",
-          "--run_id.$":           "$.ctx.run_id",
-          "--env":                "dev"
+          "--kpi_parquet_root": "s3://${raw_bucket}/kpi/",
+          "--run_id.$":          "$.ctx.run_id",
+          "--env":               "dev"
         }
       },
       "ResultPath": "$.load",

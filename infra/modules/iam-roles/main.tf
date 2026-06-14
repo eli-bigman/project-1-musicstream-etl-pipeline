@@ -10,9 +10,9 @@ data "aws_region" "current" {}
 # ── Glue PySpark Role ──────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "glue_pyspark" {
-  name = "${var.env}-glue-pyspark-role"
+  name               = "${var.env}-glue-pyspark-role"
   assume_role_policy = data.aws_iam_policy_document.glue_assume.json
-  tags = var.common_tags
+  tags               = var.common_tags
 }
 
 data "aws_iam_policy_document" "glue_assume" {
@@ -43,6 +43,8 @@ data "aws_iam_policy_document" "glue_pyspark_policy" {
     actions = ["s3:PutObject", "s3:DeleteObject"]
     resources = [
       "${var.raw_bucket_arn}/kpi/*",
+      "${var.raw_bucket_arn}/kpi_$folder$",
+      "${var.raw_bucket_arn}/tmp/*",
       "${var.quarantine_bucket_arn}/*",
     ]
   }
@@ -54,7 +56,7 @@ data "aws_iam_policy_document" "glue_pyspark_policy" {
     ]
   }
   statement {
-    sid     = "GlueDataCatalog"
+    sid = "GlueDataCatalog"
     actions = [
       "glue:GetDatabase", "glue:GetTable", "glue:GetPartition",
       "glue:GetPartitions", "glue:CreateTable", "glue:UpdateTable",
@@ -62,13 +64,13 @@ data "aws_iam_policy_document" "glue_pyspark_policy" {
     resources = ["*"]
   }
   statement {
-    sid     = "CloudWatchMetrics"
-    actions = ["cloudwatch:PutMetricData"]
+    sid       = "CloudWatchMetrics"
+    actions   = ["cloudwatch:PutMetricData"]
     resources = ["*"]
   }
   statement {
-    sid     = "KmsDecrypt"
-    actions = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
+    sid       = "KmsDecrypt"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
     resources = [var.kms_key_arn]
   }
 }
@@ -82,9 +84,9 @@ resource "aws_iam_role_policy" "glue_pyspark" {
 # ── Glue Python Shell Role ─────────────────────────────────────────────────────
 
 resource "aws_iam_role" "glue_python_shell" {
-  name = "${var.env}-glue-python-shell-role"
+  name               = "${var.env}-glue-python-shell-role"
   assume_role_policy = data.aws_iam_policy_document.glue_assume.json
-  tags = var.common_tags
+  tags               = var.common_tags
 }
 
 data "aws_iam_policy_document" "glue_python_shell_policy" {
@@ -99,7 +101,7 @@ data "aws_iam_policy_document" "glue_python_shell_policy" {
     ]
   }
   statement {
-    sid     = "WriteDynamoDB"
+    sid = "WriteDynamoDB"
     actions = [
       "dynamodb:BatchWriteItem",
       "dynamodb:PutItem",
@@ -116,13 +118,13 @@ data "aws_iam_policy_document" "glue_python_shell_policy" {
     ]
   }
   statement {
-    sid     = "CloudWatchMetrics"
-    actions = ["cloudwatch:PutMetricData"]
+    sid       = "CloudWatchMetrics"
+    actions   = ["cloudwatch:PutMetricData"]
     resources = ["*"]
   }
   statement {
-    sid     = "KmsDecrypt"
-    actions = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
+    sid       = "KmsDecrypt"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
     resources = [var.kms_key_arn]
   }
 }
@@ -136,9 +138,9 @@ resource "aws_iam_role_policy" "glue_python_shell" {
 # ── Lambda Validator Role (D-17) ───────────────────────────────────────────────
 
 resource "aws_iam_role" "lambda_validator" {
-  name = "${var.env}-lambda-validator-role"
+  name               = "${var.env}-lambda-validator-role"
   assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
-  tags = var.common_tags
+  tags               = var.common_tags
 }
 
 data "aws_iam_policy_document" "lambda_assume" {
@@ -153,18 +155,18 @@ data "aws_iam_policy_document" "lambda_assume" {
 
 data "aws_iam_policy_document" "lambda_validator_policy" {
   statement {
-    sid     = "ReadRaw"
-    actions = ["s3:GetObject"]
+    sid       = "ReadRaw"
+    actions   = ["s3:GetObject"]
     resources = ["${var.raw_bucket_arn}/*"]
   }
   statement {
-    sid     = "WriteQuarantine"
-    actions = ["s3:PutObject", "s3:CopyObject"]
+    sid       = "WriteQuarantine"
+    actions   = ["s3:PutObject", "s3:CopyObject"]
     resources = ["${var.quarantine_bucket_arn}/*"]
   }
   statement {
-    sid     = "DeleteRaw"
-    actions = ["s3:DeleteObject"]
+    sid       = "DeleteRaw"
+    actions   = ["s3:DeleteObject"]
     resources = ["${var.raw_bucket_arn}/*"]
   }
   statement {
@@ -175,8 +177,8 @@ data "aws_iam_policy_document" "lambda_validator_policy" {
     ]
   }
   statement {
-    sid     = "KmsDecrypt"
-    actions = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
+    sid       = "KmsDecrypt"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
     resources = [var.kms_key_arn]
   }
 }
@@ -190,9 +192,9 @@ resource "aws_iam_role_policy" "lambda_validator" {
 # ── Step Functions Role ────────────────────────────────────────────────────────
 
 resource "aws_iam_role" "step_functions" {
-  name = "${var.env}-step-functions-role"
+  name               = "${var.env}-step-functions-role"
   assume_role_policy = data.aws_iam_policy_document.sfn_assume.json
-  tags = var.common_tags
+  tags               = var.common_tags
 }
 
 data "aws_iam_policy_document" "sfn_assume" {
@@ -207,13 +209,13 @@ data "aws_iam_policy_document" "sfn_assume" {
 
 data "aws_iam_policy_document" "sfn_policy" {
   statement {
-    sid     = "InvokeLambda"
-    actions = ["lambda:InvokeFunction"]
+    sid       = "InvokeLambda"
+    actions   = ["lambda:InvokeFunction"]
     resources = [var.lambda_validator_arn]
   }
   statement {
-    sid     = "StartGlueJobs"
-    actions = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"]
+    sid       = "StartGlueJobs"
+    actions   = ["glue:StartJobRun", "glue:GetJobRun", "glue:GetJobRuns", "glue:BatchStopJobRun"]
     resources = ["*"]
   }
   statement {
@@ -226,7 +228,7 @@ data "aws_iam_policy_document" "sfn_policy" {
     ]
   }
   statement {
-    sid     = "CloudWatchLogs"
+    sid = "CloudWatchLogs"
     actions = [
       "logs:CreateLogDelivery", "logs:GetLogDelivery", "logs:UpdateLogDelivery",
       "logs:DeleteLogDelivery", "logs:ListLogDeliveries",
@@ -235,8 +237,8 @@ data "aws_iam_policy_document" "sfn_policy" {
     resources = ["*"]
   }
   statement {
-    sid     = "XRay"
-    actions = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"]
+    sid       = "XRay"
+    actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"]
     resources = ["*"]
   }
 }
@@ -250,9 +252,9 @@ resource "aws_iam_role_policy" "step_functions" {
 # ── EventBridge Pipes Role (D-22) ─────────────────────────────────────────────
 
 resource "aws_iam_role" "eventbridge_pipe" {
-  name = "${var.env}-pipe-role"
+  name               = "${var.env}-pipe-role"
   assume_role_policy = data.aws_iam_policy_document.pipe_assume.json
-  tags = var.common_tags
+  tags               = var.common_tags
 }
 
 data "aws_iam_policy_document" "pipe_assume" {
@@ -267,13 +269,13 @@ data "aws_iam_policy_document" "pipe_assume" {
 
 data "aws_iam_policy_document" "pipe_policy" {
   statement {
-    sid     = "ConsumeSqs"
-    actions = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+    sid       = "ConsumeSqs"
+    actions   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
     resources = [var.sqs_queue_arn]
   }
   statement {
-    sid     = "StartExecution"
-    actions = ["states:StartExecution"]
+    sid       = "StartExecution"
+    actions   = ["states:StartExecution"]
     resources = [var.state_machine_arn]
   }
 }

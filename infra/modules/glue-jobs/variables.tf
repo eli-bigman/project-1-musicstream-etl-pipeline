@@ -37,7 +37,7 @@ variable "kms_key_arn" {
 
 variable "log_retention_days" {
   type    = number
-  default = 30
+  default = 365
 }
 
 # G.025X is not available in all regions; override to G.1X if needed (D-24).

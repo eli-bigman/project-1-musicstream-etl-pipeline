@@ -66,7 +66,8 @@ def get_genre_trend(genre: str, start_date: str, end_date: str) -> list[dict]:
     """Trend for a genre over a date range (base table query, no GSI)."""
     table = get_table(_table_name("genre_daily_kpi"))
     resp = table.query(
-        KeyConditionExpression=Key("genre").eq(genre) & Key("date").between(start_date, end_date),
+        KeyConditionExpression=Key("genre").eq(genre)
+        & Key("date").between(start_date, end_date),
         ScanIndexForward=True,
     )
     return [_clean(item) for item in resp["Items"]]

@@ -1,16 +1,15 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "shared"
 version = "0.1.0"
 description = "Shared utilities for MusicStream Glue jobs"
 requires-python = ">=3.9"
-dependencies = [
-    "boto3>=1.34",
-    "pyarrow>=14.0",
-]
+dependencies = []
+# boto3 and pyarrow are already present in the Glue runtime;
+# declaring them here causes pip to re-download+compile in the ephemeral env, which fails.
 
 [project.optional-dependencies]
 pyspark = ["pyspark>=3.5"]

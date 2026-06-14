@@ -28,20 +28,22 @@ module "kms_ddb" {
 # ── S3 Data Lake ───────────────────────────────────────────────────────────────
 
 module "data_lake" {
-  source      = "../../modules/s3-data-lake"
-  project     = local.project
-  env         = local.env
-  kms_key_arn = module.kms_data.key_arn
-  common_tags = local.common_tags
+  source        = "../../modules/s3-data-lake"
+  project       = local.project
+  env           = local.env
+  kms_key_arn   = module.kms_data.key_arn
+  common_tags   = local.common_tags
+  force_destroy = true # ephemeral dev — allow non-empty bucket destroy
 }
 
 # ── DynamoDB KPI Tables ────────────────────────────────────────────────────────
 
 module "ddb" {
-  source      = "../../modules/dynamodb-kpi-tables"
-  env         = local.env
-  kms_key_arn = module.kms_ddb.key_arn
-  common_tags = local.common_tags
+  source              = "../../modules/dynamodb-kpi-tables"
+  env                 = local.env
+  kms_key_arn         = module.kms_ddb.key_arn
+  common_tags         = local.common_tags
+  deletion_protection = false # ephemeral dev — allow terraform destroy
 }
 
 # ── SQS Buffer ─────────────────────────────────────────────────────────────────
@@ -69,10 +71,13 @@ module "iam" {
     module.ddb.top_songs_daily_table_arn,
     module.ddb.top_genres_daily_table_arn,
   ]
-  kms_key_arn          = module.kms_data.key_arn
-  lambda_validator_arn = module.lambda_validator.function_arn
+  kms_key_arn = module.kms_data.key_arn
+  # Use wildcard to break the circular dependency: iam↔lambda_validator↔iam and iam↔sm↔iam.
+  # The IAM defaults ("*") are still scoped to the correct actions; resource-level tightening
+  # can be applied post-deploy if this were a long-lived environment.
+  lambda_validator_arn = "*"
   sqs_queue_arn        = module.sqs.queue_arn
-  state_machine_arn    = module.sm.state_machine_arn
+  state_machine_arn    = "*"
   common_tags          = local.common_tags
 }
 
@@ -102,6 +107,7 @@ module "glue_jobs" {
   top_songs_daily_table      = module.ddb.top_songs_daily_table_name
   top_genres_daily_table     = module.ddb.top_genres_daily_table_name
   pyspark_worker_type        = var.pyspark_worker_type
+  kms_key_arn                = module.kms_data.key_arn
   common_tags                = local.common_tags
 }
 
@@ -117,6 +123,7 @@ module "sm" {
   archive_bucket_name          = module.data_lake.archive_bucket_name
   quarantine_bucket_name       = module.data_lake.quarantine_bucket_name
   raw_bucket_name              = module.data_lake.raw_bucket_name
+  kms_key_arn                  = module.kms_data.key_arn
   common_tags                  = local.common_tags
 }
 
@@ -139,4 +146,26 @@ module "vpc_stub" {
   region      = var.region
   enabled     = var.vpc_stub_enabled
   common_tags = local.common_tags
+}
+
+# ── Monitoring — CloudWatch alarms + dashboard (Sprint 7) ─────────────────────
+
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  env         = local.env
+  common_tags = local.common_tags
+
+  sqs_dlq_url  = module.sqs.dlq_url
+  sqs_dlq_name = module.sqs.dlq_name
+
+  state_machine_arn = module.sm.state_machine_arn
+
+  lambda_function_name = module.lambda_validator.function_name
+
+  glue_transform_job_name = module.glue_jobs.transform_kpis_job_name
+  glue_load_job_name      = module.glue_jobs.load_dynamodb_job_name
+
+  alarm_email = var.alarm_email
+  kms_key_arn = module.kms_data.key_arn
 }

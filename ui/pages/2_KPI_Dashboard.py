@@ -9,7 +9,6 @@ from datetime import date, timedelta
 
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -49,8 +48,16 @@ with col_f2:
         from lib.mock_data import GENRES as _GENRES
     else:
         _GENRES = [
-            "pop", "rock", "hip-hop", "jazz", "classical",
-            "electronic", "r&b", "country", "metal", "acoustic",
+            "pop",
+            "rock",
+            "hip-hop",
+            "jazz",
+            "classical",
+            "electronic",
+            "r&b",
+            "country",
+            "metal",
+            "acoustic",
         ]
     genre_filter = st.selectbox("Genre", ["All"] + sorted(_GENRES))
 with col_f3:
@@ -60,13 +67,16 @@ with col_f3:
 
 date_str = query_date.isoformat()
 
+
 # ── Data fetch ────────────────────────────────────────────────────────────────
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_all_genres(date_str: str) -> list[dict]:
     if MOCK_MODE:
         from lib.mock_data import mock_all_genres_for_date
+
         return mock_all_genres_for_date(date_str)
     from lib.dynamo_queries import get_all_genres_for_date
+
     return get_all_genres_for_date(date_str)
 
 
@@ -74,8 +84,10 @@ def fetch_all_genres(date_str: str) -> list[dict]:
 def fetch_top_genres(date_str: str) -> list[dict]:
     if MOCK_MODE:
         from lib.mock_data import mock_top_genres
+
         return mock_top_genres(date_str)
     from lib.dynamo_queries import get_top_genres
+
     return get_top_genres(date_str)
 
 
@@ -83,8 +95,10 @@ def fetch_top_genres(date_str: str) -> list[dict]:
 def fetch_genre_kpi(genre: str, date_str: str) -> dict | None:
     if MOCK_MODE:
         from lib.mock_data import mock_genre_kpi
+
         return mock_genre_kpi(genre, date_str)
     from lib.dynamo_queries import get_genre_kpi
+
     return get_genre_kpi(genre, date_str)
 
 
@@ -92,20 +106,25 @@ def fetch_genre_kpi(genre: str, date_str: str) -> dict | None:
 def fetch_top_songs(genre: str, date_str: str) -> list[dict]:
     if MOCK_MODE:
         from lib.mock_data import mock_top_songs
+
         return mock_top_songs(genre, date_str)
     from lib.dynamo_queries import get_top_songs_for_genre
+
     return get_top_songs_for_genre(genre, date_str)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
 def fetch_trend(genre: str, date_str: str, days_back: int = 30) -> list[dict]:
     from datetime import datetime
+
     end = datetime.fromisoformat(date_str)
     start = (end - timedelta(days=days_back)).date().isoformat()
     if MOCK_MODE:
         from lib.mock_data import mock_genre_trend
+
         return mock_genre_trend(genre, start, date_str)
     from lib.dynamo_queries import get_genre_trend
+
     return get_genre_trend(genre, start, date_str)
 
 
@@ -121,11 +140,11 @@ df_top = pd.DataFrame(top_genres_data) if top_genres_data else pd.DataFrame()
 st.subheader(f"Summary — {date_str}")
 if not df_all.empty:
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Plays",          f"{df_all['listen_count'].sum():,}")
-    col2.metric("Unique Listeners",     f"{df_all['unique_listeners'].sum():,}")
+    col1.metric("Total Plays", f"{df_all['listen_count'].sum():,}")
+    col2.metric("Unique Listeners", f"{df_all['unique_listeners'].sum():,}")
     total_ms = df_all["total_listening_time_ms"].sum()
-    col3.metric("Total Listening Hrs",  f"{total_ms / 3_600_000:.0f}")
-    col4.metric("Active Genres",        str(len(df_all)))
+    col3.metric("Total Listening Hrs", f"{total_ms / 3_600_000:.0f}")
+    col4.metric("Active Genres", str(len(df_all)))
 else:
     st.info(f"No KPI data found for {date_str}.")
 
@@ -183,7 +202,12 @@ if not df_top.empty:
     cols_present = [c for c in display_cols if c in df_top.columns]
     st.dataframe(
         df_top[cols_present].rename(
-            columns={"listen_count": "Plays", "genre": "Genre", "rank": "Rank", "updated_at": "Updated"}
+            columns={
+                "listen_count": "Plays",
+                "genre": "Genre",
+                "rank": "Rank",
+                "updated_at": "Updated",
+            }
         ),
         use_container_width=True,
         hide_index=True,
@@ -199,8 +223,8 @@ if genre_filter != "All":
     kpi = fetch_genre_kpi(genre_filter, date_str)
     if kpi:
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Listen Count",        f"{kpi.get('listen_count', 0):,}")
-        c2.metric("Unique Listeners",    f"{kpi.get('unique_listeners', 0):,}")
+        c1.metric("Listen Count", f"{kpi.get('listen_count', 0):,}")
+        c2.metric("Unique Listeners", f"{kpi.get('unique_listeners', 0):,}")
         total_ms = kpi.get("total_listening_time_ms", 0)
         c3.metric("Total Listening Hrs", f"{total_ms / 3_600_000:.1f}")
         avg_ms = kpi.get("avg_listening_time_per_user_ms", 0)
@@ -215,7 +239,11 @@ if genre_filter != "All":
         show_cols = ["date_rank", "track_name", "plays"]
         st.dataframe(
             df_songs[[c for c in show_cols if c in df_songs.columns]].rename(
-                columns={"date_rank": "Date#Rank", "track_name": "Track", "plays": "Plays"}
+                columns={
+                    "date_rank": "Date#Rank",
+                    "track_name": "Track",
+                    "plays": "Plays",
+                }
             ),
             use_container_width=True,
             hide_index=True,

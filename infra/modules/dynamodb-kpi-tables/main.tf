@@ -11,7 +11,7 @@ resource "aws_dynamodb_table" "genre_daily_kpi" {
   billing_mode                = "PAY_PER_REQUEST"
   hash_key                    = "genre"
   range_key                   = "date"
-  deletion_protection_enabled = true
+  deletion_protection_enabled = var.deletion_protection
 
   attribute {
     name = "genre"
@@ -47,7 +47,7 @@ resource "aws_dynamodb_table" "top_songs_daily" {
   billing_mode                = "PAY_PER_REQUEST"
   hash_key                    = "genre"
   range_key                   = "date_rank"
-  deletion_protection_enabled = true
+  deletion_protection_enabled = var.deletion_protection
 
   attribute {
     name = "genre"
@@ -76,7 +76,7 @@ resource "aws_dynamodb_table" "top_genres_daily" {
   billing_mode                = "PAY_PER_REQUEST"
   hash_key                    = "date"
   range_key                   = "rank"
-  deletion_protection_enabled = true
+  deletion_protection_enabled = var.deletion_protection
 
   attribute {
     name = "date"

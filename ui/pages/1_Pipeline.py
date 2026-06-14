@@ -43,12 +43,18 @@ uploaded_files = st.file_uploader(
     type=["csv"],
     accept_multiple_files=True,
 )
-stream_date = st.date_input("Stream date (used for S3 partition prefix)", value=date(2024, 6, 25))
+stream_date = st.date_input(
+    "Stream date (used for S3 partition prefix)", value=date(2024, 6, 25)
+)
 
-if st.button("🚀 Upload & Trigger Pipeline", type="primary", disabled=not uploaded_files):
+if st.button(
+    "🚀 Upload & Trigger Pipeline", type="primary", disabled=not uploaded_files
+):
     if MOCK_MODE:
         st.session_state["mock_execution"] = True
-        st.success(f"[Mock] Would upload {len(uploaded_files)} file(s) and send to SQS.")
+        st.success(
+            f"[Mock] Would upload {len(uploaded_files)} file(s) and send to SQS."
+        )
     else:
         from lib.pipeline_ops import upload_csv_to_s3, start_execution_via_sqs
 
@@ -61,7 +67,9 @@ if st.button("🚀 Upload & Trigger Pipeline", type="primary", disabled=not uplo
         for key in keys:
             msg_id = start_execution_via_sqs(RAW_BUCKET, key)
             st.write(f"  📨 Queued key → SQS message `{msg_id}`")
-        st.success("All files uploaded and queued. EventBridge Pipe will start execution shortly.")
+        st.success(
+            "All files uploaded and queued. EventBridge Pipe will start execution shortly."
+        )
 
 st.divider()
 
@@ -95,7 +103,12 @@ else:
             col1.write(f"**Started:** {start}")
             col2.write(f"**Ended:** {stop}")
 
-            stages = ["ValidateSchema", "TransformAndCompute", "LoadDynamoDB", "ArchiveBatch"]
+            stages = [
+                "ValidateSchema",
+                "TransformAndCompute",
+                "LoadDynamoDB",
+                "ArchiveBatch",
+            ]
             stage_status = {s: "pending" for s in stages}
             if status == "SUCCEEDED":
                 stage_status = {s: "done" for s in stages}
@@ -107,11 +120,17 @@ else:
                 stage_status["TransformAndCompute"] = "fail"
 
             cols = st.columns(len(stages))
-            labels = {"done": ("✅", "stage-done"), "running": ("⏳", "stage-running"),
-                      "pending": ("⬜", "stage-pending"), "fail": ("❌", "stage-fail")}
+            labels = {
+                "done": ("✅", "stage-done"),
+                "running": ("⏳", "stage-running"),
+                "pending": ("⬜", "stage-pending"),
+                "fail": ("❌", "stage-fail"),
+            }
             for col, stage in zip(cols, stages):
                 sym, css = labels[stage_status[stage]]
-                col.markdown(f'<span class="{css}">{sym} {stage}</span>', unsafe_allow_html=True)
+                col.markdown(
+                    f'<span class="{css}">{sym} {stage}</span>', unsafe_allow_html=True
+                )
 
 st.divider()
 

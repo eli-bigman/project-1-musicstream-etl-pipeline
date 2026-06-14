@@ -8,8 +8,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "glue"))
 
 from shared.dynamo_utils import shape_for_dynamo
 
-
 # ── genre_daily (D-03-R: PK=genre, SK=date) ──────────────────────────────────
+
 
 def test_shape_genre_daily_keys():
     row = {
@@ -45,6 +45,7 @@ def test_shape_genre_daily_accepts_date_key():
 
 # ── top_songs_daily (D-03-R: PK=genre, SK=date_rank zero-padded) ─────────────
 
+
 def test_shape_top_songs_sk_format():
     row = {
         "genre": "rock",
@@ -62,20 +63,33 @@ def test_shape_top_songs_sk_format():
 
 
 def test_shape_top_songs_rank_03_padding():
-    row = {"genre": "pop", "listen_date": "2024-06-25", "rank": 3,
-           "track_id": "X", "track_name": "Y", "plays": 100}
+    row = {
+        "genre": "pop",
+        "listen_date": "2024-06-25",
+        "rank": 3,
+        "track_id": "X",
+        "track_name": "Y",
+        "plays": 100,
+    }
     item = shape_for_dynamo("top_songs_daily", row)
     assert item["date_rank"].endswith("#03")
 
 
 def test_shape_top_songs_rank_2digit_if_needed():
-    row = {"genre": "pop", "listen_date": "2024-06-25", "rank": 10,
-           "track_id": "X", "track_name": "Y", "plays": 100}
+    row = {
+        "genre": "pop",
+        "listen_date": "2024-06-25",
+        "rank": 10,
+        "track_id": "X",
+        "track_name": "Y",
+        "plays": 100,
+    }
     item = shape_for_dynamo("top_songs_daily", row)
     assert item["date_rank"].endswith("#10")
 
 
 # ── top_genres_daily (unchanged: PK=date, SK=rank (int)) ─────────────────────
+
 
 def test_shape_top_genres_keys():
     row = {"listen_date": "2024-06-25", "rank": 1, "genre": "pop", "listen_count": 8421}
@@ -88,11 +102,13 @@ def test_shape_top_genres_keys():
 
 def test_shape_unknown_kind_raises():
     import pytest
+
     with pytest.raises(ValueError, match="Unknown kpi_kind"):
         shape_for_dynamo("bad_kind", {})
 
 
 # ── PII guard — user_name and user_country must never appear in shaped items ──
+
 
 def test_no_pii_in_shaped_items():
     row = {
@@ -102,8 +118,8 @@ def test_no_pii_in_shaped_items():
         "unique_listeners": 50,
         "total_listening_time_ms": 1_000_000,
         "avg_listening_time_per_user_ms": 20000.0,
-        "user_name": "Alice",       # PII — must be excluded
-        "user_country": "US",       # PII — must be excluded
+        "user_name": "Alice",  # PII — must be excluded
+        "user_country": "US",  # PII — must be excluded
     }
     item = shape_for_dynamo("genre_daily", row)
     assert "user_name" not in item

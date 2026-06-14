@@ -6,18 +6,19 @@ terraform {
 
 locals {
   buckets = {
-    raw         = "${var.project}-${var.env}-raw"
-    archive     = "${var.project}-${var.env}-archive"
-    quarantine  = "${var.project}-${var.env}-quarantine"
-    scripts     = "${var.project}-${var.env}-scripts"
-    reference   = "${var.project}-${var.env}-reference"
+    raw        = "${var.project}-${var.env}-raw"
+    archive    = "${var.project}-${var.env}-archive"
+    quarantine = "${var.project}-${var.env}-quarantine"
+    scripts    = "${var.project}-${var.env}-scripts"
+    reference  = "${var.project}-${var.env}-reference"
   }
 }
 
 resource "aws_s3_bucket" "buckets" {
-  for_each = local.buckets
-  bucket   = each.value
-  tags     = merge(var.common_tags, { Purpose = each.key })
+  for_each      = local.buckets
+  bucket        = each.value
+  force_destroy = var.force_destroy
+  tags          = merge(var.common_tags, { Purpose = each.key })
 }
 
 resource "aws_s3_bucket_versioning" "buckets" {
