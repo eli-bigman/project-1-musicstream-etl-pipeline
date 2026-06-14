@@ -27,21 +27,38 @@ REQUIRED_ARGS = [
 ]
 
 
+def _partition_values_from_key(key: str) -> dict:
+    """Extract Hive-style partition key=value pairs from an S3 key path."""
+    parts = {}
+    for segment in key.split("/"):
+        if "=" in segment:
+            k, v = segment.split("=", 1)
+            parts[k] = v
+    return parts
+
+
 def _iter_parquet_rows(bucket: str, prefix: str):
-    """Yield raw row dicts from all Parquet files under prefix."""
+    """Yield raw row dicts from all Parquet files under prefix.
+
+    Partition columns (e.g. listen_date=2024-06-25) are injected into each row
+    because partitionBy() removes them from the Parquet file data.
+    """
+    import os
+    import tempfile
+
     keys = list_s3_keys(bucket, prefix)
     s3 = boto3.client("s3")
     for key in keys:
         if not (key.endswith(".parquet") or "part-" in key.split("/")[-1]):
             continue
-        import os
-        import tempfile
-
+        partition_extras = _partition_values_from_key(key)
         local = os.path.join(tempfile.gettempdir(), key.split("/")[-1])
         s3.download_file(bucket, key, local)
         pf = pq.ParquetFile(local)
         for batch in pf.iter_batches():
-            yield from batch.to_pylist()
+            for row in batch.to_pylist():
+                row.update(partition_extras)
+                yield row
         os.remove(local)
 
 
