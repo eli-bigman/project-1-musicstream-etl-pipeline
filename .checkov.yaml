@@ -1,0 +1,120 @@
+# Checkov skip configuration for dev environment
+# Each skipped check has a documented rationale below.
+# Review before promoting to prod — some skips are dev-only trade-offs.
+
+skip_checks:
+  # ── CloudWatch Logs KMS ───────────────────────────────────────────────────────
+  # CKV_AWS_158: CW Log Group KMS encryption
+  # Rationale: Enabling kms_key_id on CW Log Groups requires a separate key policy
+  # grant for the logs.amazonaws.com service principal. Adding that grant to the
+  # root-delegation KMS policy (D-25) creates a circular Terraform dependency between
+  # the KMS module and the log group resources. Skipped for dev; add a dedicated
+  # logs KMS key with the required service principal grant before prod.
+  - CKV_AWS_158
+
+  # ── Glue security configuration ──────────────────────────────────────────────
+  # CKV_AWS_195: Glue job security configuration
+  # Rationale: Glue security configurations add S3 and CW Logs encryption settings
+  # that are already handled at the bucket/log-group level. Adding a security config
+  # resource would also require an additional IAM permission. Deferred for dev.
+  - CKV_AWS_195
+
+  # ── IAM wildcard resources ────────────────────────────────────────────────────
+  # CKV_AWS_109, CKV_AWS_111, CKV_AWS_356: IAM policies with "*" resources
+  # Rationale: Several policies use "*" for resource ARNs to break circular Terraform
+  # dependencies (iam↔lambda↔iam, iam↔step-functions↔iam). This is a dev-only
+  # trade-off documented in decision.md. Tighten to specific ARNs using a two-phase
+  # apply before prod.
+  - CKV_AWS_109
+  - CKV_AWS_111
+  - CKV_AWS_356
+
+  # ── Lambda hardening ──────────────────────────────────────────────────────────
+  # CKV_AWS_115: Lambda reserved concurrency
+  # Rationale: Pipeline Lambda runs inside Step Functions with at most one execution
+  # per EventBridge Pipe batch. No concurrent invocation storm is possible; reserved
+  # concurrency would only limit throughput artificially.
+  - CKV_AWS_115
+
+  # CKV_AWS_116: Lambda DLQ
+  # Rationale: Lambda is invoked synchronously by Step Functions. Errors are caught
+  # by the state machine Catch block and routed to quarantine. A separate Lambda DLQ
+  # would duplicate error handling that already exists in the orchestrator.
+  - CKV_AWS_116
+
+  # CKV_AWS_117: Lambda inside VPC
+  # Rationale: VPC stub module is disabled by default (D-27). Lambda accesses S3/DDB
+  # via AWS public endpoints with IAM auth. No VPC isolation required for dev.
+  - CKV_AWS_117
+
+  # CKV_AWS_173: Lambda env variable KMS encryption
+  # Rationale: Lambda environment variables contain only non-secret configuration
+  # (bucket names, env name). No secrets are passed via env vars; KMS encryption of
+  # env vars would add cost with no security benefit for these values.
+  - CKV_AWS_173
+
+  # CKV_AWS_272: Lambda code-signing
+  # Rationale: Code-signing requires a Signer profile and signing all Lambda packages
+  # in CI. The Lambda package is built and uploaded in the same trusted CI pipeline
+  # (cd-dev.yml). Code-signing is a prod hardening step; deferred for dev.
+  - CKV_AWS_272
+
+  # CKV_AWS_50: Lambda X-Ray tracing
+  # Rationale: Step Functions tracing is enabled (logs ALL level + X-Ray). Adding
+  # Lambda-level X-Ray would add cost without significant additional observability
+  # for this single-function pipeline. Deferred for dev.
+  - CKV_AWS_50
+
+  # ── S3 hardening ─────────────────────────────────────────────────────────────
+  # CKV_AWS_18: S3 access logging
+  # Rationale: Access logging requires a dedicated logging bucket and adds storage
+  # cost. All meaningful access is via Step Functions / Lambda / Glue with CloudTrail
+  # data events enabled at the account level. Deferred for dev.
+  - CKV_AWS_18
+
+  # CKV_AWS_144: S3 cross-region replication
+  # Rationale: Dev environment; no DR requirements. Data is ephemeral and can be
+  # re-seeded from source files.
+  - CKV_AWS_144
+
+  # CKV_AWS_145: S3 KMS default encryption
+  # Rationale: Buckets use SSE-KMS via bucket_key_enabled on the server-side
+  # encryption configuration. Checkov flags this because the check looks specifically
+  # for aws_s3_bucket_server_side_encryption_configuration with kms_master_key_id
+  # at the bucket-default level. The project's KMS key ARN is passed and applied
+  # at the S3 object level via IAM conditions requiring SSE-KMS.
+  - CKV_AWS_145
+
+  # CKV_AWS_300: S3 lifecycle abort failed multipart uploads
+  # Rationale: Files are small CSVs; multipart uploads are not used. Abortive
+  # multipart cleanup is not applicable.
+  - CKV_AWS_300
+
+  # CKV2_AWS_61: S3 lifecycle configuration on all buckets
+  # Rationale: Lifecycle policies exist on raw (archive→Glacier 90d), archive
+  # (expire 730d), and quarantine (expire 30d). Scripts and reference buckets hold
+  # code artefacts and static reference data with no expiry requirement.
+  - CKV2_AWS_61
+
+  # CKV2_AWS_62: S3 event notifications on all buckets
+  # Rationale: Only the raw bucket needs EventBridge notifications (triggers the
+  # ETL pipeline). Archive, quarantine, scripts, and reference buckets are write
+  # targets, not event sources.
+  - CKV2_AWS_62
+
+  # ── DynamoDB bootstrap table ──────────────────────────────────────────────────
+  # CKV_AWS_119, CKV_AWS_28: DynamoDB KMS + PITR on tfstate_lock table
+  # Rationale: The Terraform state lock table is a bootstrap resource managed
+  # manually (not through the main Terraform state). It holds only transient lock
+  # metadata, not application data. PITR and CMK encryption are production concerns
+  # for tables holding business data; overkill for a lock table.
+  - CKV_AWS_119
+  - CKV_AWS_28
+
+  # ── VPC ───────────────────────────────────────────────────────────────────────
+  # CKV2_AWS_11: VPC flow logging
+  # CKV2_AWS_12: VPC default security group
+  # Rationale: VPC stub module is disabled by default (D-27). No VPC is provisioned
+  # in dev. These checks have nothing to scan.
+  - CKV2_AWS_11
+  - CKV2_AWS_12
