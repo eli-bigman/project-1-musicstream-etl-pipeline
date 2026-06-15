@@ -15,7 +15,7 @@ resource "aws_sqs_queue" "buffer" {
   name                       = "${var.env}-etl-buffer"
   visibility_timeout_seconds = 300
   message_retention_seconds  = 86400
-  sqs_managed_sse_enabled    = true   # AWS-managed SSE; EventBridge service principal can't use CMK without explicit key policy grant
+  sqs_managed_sse_enabled    = true # AWS-managed SSE; EventBridge service principal can't use CMK without explicit key policy grant
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
