@@ -60,7 +60,7 @@ resource "aws_cloudwatch_event_rule" "s3_raw" {
     detail = {
       bucket = { name = [var.raw_bucket_name] }
       object = {
-        key = [{ prefix = "streams/" }, { suffix = ".csv" }]
+        key = [{ prefix = "streams/" }]
       }
     }
   })
