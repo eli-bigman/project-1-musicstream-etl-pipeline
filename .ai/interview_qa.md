@@ -22,6 +22,22 @@ Senior data engineer interview preparation. Every answer is grounded in this pro
 
 ---
 
+**Q: You use an EventBridge Pipe with a Lambda enrichment. Why not use the Pipe's built-in input transformer?**
+
+**Strong answer:** The Pipe's `enrichment_parameters.input_template` field accepts the special `<aws.pipes.event.json>` variable only in `target_parameters`, not in `enrichment_parameters`. When I tried to set it on the enrichment, AWS returned `ValidationException: Invalid json path reference or predefined variable`. The correct pattern for reshaping the Pipe payload is a Lambda enrichment step: the Lambda receives the raw SQS batch, extracts `bucket` and `key` from each message body, and returns the single `{detail:{bucket:{name},object:{keys:[...]}}}` object the ASL `ParseInput` state expects. The Lambda (`dev-pipe-enrichment`) adds one extra invocation per Pipe execution at negligible cost (~$0.0000002).
+
+**What they're testing:** Deep knowledge of EventBridge Pipes limitations; willingness to dig into AWS validation errors rather than guess.
+
+---
+
+**Q: How does the Step Functions Map state pass context into its iterator branches?**
+
+**Strong answer:** The Map state iterates over an array and passes each item into a separate sub-execution. The trap is that `$$.Execution.Input` inside the iterator refers to the *original* execution input — not the runtime state that was built up by earlier states like `ParseInput`. My `ParseInput` state adds a `ctx.bucket` field via `ResultPath: "$.ctx"`. Inside the Map iterator, `$$.Execution.Input` had no `ctx` key, causing `States.Runtime` errors. The fix is `ItemSelector` on the Map state itself: before entering the iterator, project each item into `{key: "$.Map.Item.Value", bucket: "$.ctx.bucket"}` from the Map's *effective* input (which does have `ctx`). The iterator then references `$.bucket` and `$.key` directly, with no dependency on execution input.
+
+**What they're testing:** ASL execution model; understanding of `$` vs `$$` context; `ItemSelector` vs `Parameters`.
+
+---
+
 **Q: Why is the PySpark transform a separate Glue job from the DynamoDB loader instead of one big script?**
 
 **Strong answer:** PySpark and Python Shell are fundamentally different Glue job types. PySpark runs on a cluster with Spark workers — great for distributed joins on large datasets. Python Shell runs on a single node with standard Python — great for sequential boto3 API calls. Mixing them forces you into the more expensive PySpark environment for what is essentially a for-loop over DynamoDB writes. Separating them also allows independent retries: if DynamoDB write fails due to transient throttling, Step Functions retries only the load job, not the expensive PySpark transform.
@@ -242,6 +258,14 @@ The three aggregations share the same source `df` — no re-reading from S3. The
 **Strong answer:** Every IAM role in this project has an explicit `Action` list — no wildcards like `s3:*` or `dynamodb:*`. The Glue PySpark role can read from `raw/`, `reference/`, and write to `kpi/` and `quarantine/` — not to the archive bucket or scripts bucket. The Lambda validator can only read from raw and write to quarantine — not trigger Glue or Step Functions directly. IAM condition keys restrict by resource ARN where possible. The one deliberate exception is the `lambda_validator_arn = "*"` in the Step Functions IAM policy — this breaks a Terraform circular dependency and is documented as a known gap to tighten before production.
 
 **What they're testing:** IAM policy design; understanding of circular dependency trade-offs.
+
+---
+
+**Q: Why does the Glue Python Shell role have two separate KMS statements — one for S3 and one for DynamoDB?**
+
+**Strong answer:** This project uses two distinct KMS keys: one for S3 data (`dev-data`) and one for DynamoDB (`dev-ddb`). Separating them means a key rotation or compromise on the S3 side doesn't affect DynamoDB data and vice versa. The Glue Python Shell role needs `kms:Decrypt` and `kms:GenerateDataKey*` on both keys: the S3 key to read KPI Parquet files from the raw bucket, and the DDB key to encrypt writes to the three DynamoDB tables. During the smoke test, only the S3 KMS statement existed (`KmsDecryptData`). The job passed the S3 read but failed at the DynamoDB write with `AccessDeniedException`. Adding a second statement (`KmsDecryptDdb`) targeted at `var.ddb_kms_key_arn` fixed it. Two explicit statements, each with a minimal resource scope, are better practice than one statement with a wildcard resource.
+
+**What they're testing:** Multi-key IAM design; understanding of why KMS `AccessDeniedException` occurs on DynamoDB writes; least-privilege at the resource level.
 
 ---
 

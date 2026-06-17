@@ -128,21 +128,22 @@ A GSI `date_genre_index` on `genre_daily_kpi` (PK=`date`, SK=`genre`) covers the
 
 ---
 
-## D-22: EventBridge Pipe (SQS → Step Functions)
+## D-22: EventBridge Pipe (SQS → Step Functions) with Lambda Enrichment
 
-**Problem:** SQS receives batches of S3 event notifications. Something must consume the SQS messages and trigger a Step Functions execution with the batch as input. What should play this role?
+**Problem:** SQS receives batches of S3 event notifications. Something must consume the SQS messages and trigger a Step Functions execution with the batch as input. The raw SQS batch format (`[{messageId, body, ...}]`) does not match the SM's expected input (`{detail:{bucket:{name},object:{keys:[...]}}}`).
 
 **Options Considered:**
-1. EventBridge Pipe (native SQS→Step Functions connector)
-2. Lambda consumer that reads SQS and calls `StartExecution`
-3. Direct EventBridge rule → Step Functions (no SQS buffer)
+1. EventBridge Pipe (native SQS→Step Functions connector) + input transformer
+2. EventBridge Pipe + Lambda enrichment step
+3. Lambda consumer that reads SQS and calls `StartExecution`
 
-**Decision:** EventBridge Pipe with `BatchSize=50`, `MaximumBatchingWindowInSeconds=120`.
+**Decision:** EventBridge Pipe with `BatchSize=50`, `MaximumBatchingWindowInSeconds=120`, and a **Lambda enrichment step** (`dev-pipe-enrichment`).
 
-**Rationale:** EventBridge Pipe natively supports SQS as a source and Step Functions as a target, with built-in batching. It removes the need for a Lambda function that exists only to forward messages, reducing cost and operational surface area.
+**Rationale:** The Pipe's `enrichment_parameters.input_template` syntax (the `<aws.pipes.event.json>` variable) is only valid in `target_parameters`, not `enrichment_parameters` — AWS rejects it with a validation error. The only correct way to reshape the Pipe payload before it reaches Step Functions is a Lambda enrichment. The enrichment Lambda (`lambda/pipe_enrichment/handler.py`) receives the SQS batch, extracts `detail.bucket.name` and `detail.object.key` from each record, and returns a single `{detail:{bucket:{name},object:{keys:[...]}}}` that the ASL `ParseInput` state can parse with `$.detail.bucket.name`.
 
 **Trade-offs:**
-- Known gap: the Pipe delivers raw SQS message records (an array with `messageId`, `body`, etc.) to Step Functions, but the ASL `ParseInput` state expects `$.detail.bucket.name` from a parsed EventBridge event. This works when the SM is invoked directly (smoke test method), but fails via the full Pipe→SM path (smoke-test bug #5). **Fix required before production:** add a Pipe input transformer or Lambda enrichment that extracts bucket/keys from the SQS body before passing to the SM.
+- One extra Lambda invocation per Pipe execution — negligible cost (~$0.0000002)
+- Lambda enrichment must be deployed and role must have `lambda:InvokeFunction` permission — managed by Terraform
 
 ---
 
@@ -240,12 +241,17 @@ A GSI `date_genre_index` on `genre_daily_kpi` (PK=`date`, SK=`genre`) covers the
 
 ## Smoke-Test Bug Summary
 
-Five bugs were found and fixed during the first end-to-end sandbox smoke test. All fixes are committed in PR #2 (`fix/smoke-test-bugs`).
+Ten bugs were found and fixed across two rounds of sandbox smoke testing. The pipeline achieved its first full SUCCEEDED end-to-end execution on 2026-06-17 (execution `8216300c-217e-4653-bd0a-ac615859d5a7`).
 
 | # | Bug | Root Cause | Fix |
 |---|-----|-----------|-----|
 | 1 | EventBridge couldn't deliver to SQS | SQS queues were CMK-encrypted; `events.amazonaws.com` service principal not in key policy (root delegation only per D-25) | Switch SQS queues to `sqs_managed_sse_enabled = true` |
 | 2 | Glue PySpark job read wrong reference bucket | ASL template had `"${raw_bucket}"` instead of `"${reference_bucket}"` for `--reference_bucket` argument | Fix ASL template; add `reference_bucket_name` variable to SM module |
-| 3 | DynamoDB load failed with KeyError: 'date' | PySpark `partitionBy("listen_date")` removes `listen_date` from Parquet file bytes; Python Shell read raw bytes without partition context | Add `_partition_values_from_key()` to parse `key=value` from S3 path; inject into each row |
+| 3 | `date="None"` written to DynamoDB | PySpark `partitionBy("listen_date")` removes `listen_date` from Parquet file bytes; Python Shell read raw bytes without partition context | Add `_partition_values_from_key()` to parse `key=value` from S3 path; inject into each row |
 | 4 | Glue PySpark AnalysisException: not a Parquet file | Reference data uploaded as CSV; Glue reads entire prefix and expects Parquet (D-18) | Convert CSV → Parquet locally with pandas/pyarrow; delete CSV; upload Parquet only |
-| 5 | SM failed at ParseInput via Pipe | EventBridge Pipe delivers raw SQS record array; ASL expects `$.detail.bucket.name` | Workaround: invoke SM directly for smoke test. **Known gap** — needs Pipe input transformer for production |
+| 5 | SM failed at ParseInput via Pipe (auto-trigger path) | EventBridge Pipe delivers raw SQS record array; ASL expects `$.detail.bucket.name` | Deploy `dev-pipe-enrichment` Lambda as Pipe enrichment step; reshapes SQS batch into SM-expected format |
+| 6 | LoadDynamoDB exit code 2 (`JOB_NAME` missing) | `getResolvedOptions(sys.argv, ["JOB_NAME", ...])` requires `--JOB_NAME` in argv; Step Functions did not pass it | Add `"--JOB_NAME": "${load_dynamodb_job}"` to ASL LoadDynamoDB Arguments block |
+| 7 | LoadDynamoDB KMS `AccessDeniedException` on DynamoDB | `dev-glue-python-shell-role` only had S3 KMS key; DDB KMS key was separate | Add `KmsDecryptDdb` IAM statement with `ddb_kms_key_arn`; pass `module.kms_ddb.key_arn` from dev/main.tf |
+| 8 | ArchiveBatch CopyToArchive: `$.Execution.Input.ctx.bucket` not found | Inside Map iterator, `$$.Execution.Input` is the original execution input (no `ctx`); `ctx` is added by ParseInput at runtime | Change Map state to use `ItemSelector` projecting `{key, bucket}` from `$.ctx.bucket` before entering the iterator |
+| 9 | Step Functions CopyToArchive: KMS `AccessDeniedException` on S3 | `dev-step-functions-role` lacked `kms:GenerateDataKey` on the S3 data KMS key; needed to encrypt objects copied to archive bucket | Add `KmsForS3Archive` IAM statement to Step Functions role |
+| 10 | S3 bucket name collisions on first deploy | Bucket names from prior account already owned globally; no uniqueness suffix | Add `bucket_suffix = account_id` to all bucket names (e.g. `musicstream-dev-raw-970547336735`) |

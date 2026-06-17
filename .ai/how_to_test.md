@@ -9,20 +9,22 @@ This document is the single reference for running every test layer in this proje
 | Setting | Value |
 |---|---|
 | AWS profile | `sandbox-musicstream-dev` |
+| Account ID | `970547336735` |
 | Region | `eu-west-1` |
-| Terraform state bucket | `musicstream-tfstate` (or `musicstream-tfstate-<account-id>` for new sandbox accounts) |
+| Terraform state bucket | `musicstream-tfstate-970547336735` |
 | DynamoDB lock table | `musicstream-tfstate-lock` |
-| Raw bucket | `musicstream-dev-raw-<suffix>` |
-| Reference bucket | `musicstream-dev-reference-<suffix>` |
-| Scripts bucket | `musicstream-dev-scripts-<suffix>` |
-| Archive bucket | `musicstream-dev-archive-<suffix>` |
-| Quarantine bucket | `musicstream-dev-quarantine-<suffix>` |
+| Raw bucket | `musicstream-dev-raw-970547336735` |
+| Reference bucket | `musicstream-dev-reference-970547336735` |
+| Scripts bucket | `musicstream-dev-scripts-970547336735` |
+| Archive bucket | `musicstream-dev-archive-970547336735` |
+| Quarantine bucket | `musicstream-dev-quarantine-970547336735` |
 | DynamoDB tables | `dev_genre_daily_kpi`, `dev_top_songs_daily`, `dev_top_genres_daily` |
 | Step Functions | `dev-streaming-etl-sm` |
-| Lambda | `dev-validate-schema` |
-| Glue jobs | `dev-transform-kpis`, `dev-load-dynamodb` |
+| Lambda validator | `dev-validate-schema` |
+| Lambda enrichment | `dev-pipe-enrichment` |
+| Glue jobs | `dev-transform-kpis` (G.1X × 2), `dev-load-dynamodb` (0.0625 DPU) |
 
-> `<suffix>` is your AWS account ID. Set `bucket_suffix = "<account-id>"` in `infra/envs/dev/terraform.tfvars` to avoid global S3 name collisions. Every bucket reference below uses this suffix.
+> Replace `<account-id>` in commands below with `970547336735`. Set `bucket_suffix = "970547336735"` in `infra/envs/dev/terraform.tfvars` when deploying to a different account.
 
 ---
 
@@ -285,9 +287,9 @@ Both listings should show only `.parquet` files.
 
 ### Step 5 — Trigger the Pipeline
 
-Two methods are available. Method B is preferred for testing the ETL core directly without waiting on the EventBridge Pipe batch window.
+Two methods are available. Both are fully functional. Use Method A to verify the complete auto-trigger path; use Method B for fast ETL iteration without the 120-second Pipe batch window.
 
-**Method A — Upload CSV to raw S3 (full end-to-end including Pipe):**
+**Method A — Upload CSV to raw S3 (full auto-trigger path including Pipe):**
 
 ```bash
 aws s3 cp data/streams/streams1.csv \
@@ -295,7 +297,7 @@ aws s3 cp data/streams/streams1.csv \
   --profile sandbox-musicstream-dev
 ```
 
-The EventBridge Pipe has a 120-second batch window. Wait 2–3 minutes before checking for an execution. This path exercises the full S3 → EventBridge → SQS → Pipe → Step Functions flow.
+EventBridge detects the S3 PUT event, delivers it to SQS, and the EventBridge Pipe batches messages over a 120-second window. The `dev-pipe-enrichment` Lambda enrichment step reshapes the SQS batch into the `{detail:{bucket:{name},object:{keys:[...]}}}` format the ASL expects. Wait 2–3 minutes before checking for an execution. This path exercises the full S3 → EventBridge → SQS → Pipe → enrichment Lambda → Step Functions flow.
 
 **Method B — Invoke Step Functions directly (recommended for ETL testing):**
 
@@ -496,27 +498,30 @@ aws logs tail /aws/lambda/dev-validate-schema \
 
 ## Known Issues and Workarounds
 
-### 1. EventBridge Pipe input format mismatch
+All previously known gaps have been resolved. The pipeline is fully operational end-to-end including the automatic trigger path (S3 upload → EventBridge → SQS → Pipe → SM).
 
-**Symptom:** Executions triggered via the Pipe (Method A) fail at the `ParseInput` state with a path expression error.
+### Resolved: EventBridge Pipe input format mismatch (fixed 2026-06-17)
 
-**Root cause:** The EventBridge Pipe delivers the raw SQS message record array. The ASL `ParseInput` state expects `$.detail.bucket.name`, which matches the S3 EventBridge event schema — not the SQS wrapper format.
+The Pipe now has a `dev-pipe-enrichment` Lambda as its enrichment step. It receives the raw SQS batch, extracts `detail.bucket.name` and `detail.object.key` from each record, and returns the single `{detail:{bucket:{name},object:{keys:[...]}}}` structure the ASL `ParseInput` state expects. No workaround needed.
 
-**Workaround:** Use Method B (direct `start-execution`) for all ETL testing. For production readiness, add a Pipe input transformer or Lambda enrichment step to reshape the SQS payload into the expected `detail.bucket.name` / `detail.object.keys` structure before it reaches Step Functions.
+### Resolved: Glue Python Shell exit code 2 (fixed 2026-06-17)
 
-### 2. Glue Python Shell exit code 2 (load_dynamodb job)
+Three separate causes were fixed:
+1. `--JOB_NAME` argument now passed explicitly in the ASL LoadDynamoDB `Arguments` block.
+2. `_partition_values_from_key()` added to `load_dynamodb.py` — injects `listen_date` from the S3 key path into each Parquet row (PySpark `partitionBy` removes the column from the file bytes).
+3. `dev-glue-python-shell-role` now has `KmsDecryptDdb` permission for the DynamoDB KMS key.
 
-**Symptom:** The `dev-load-dynamodb` Glue job exits with error code 2 when invoked from Step Functions.
+### Resolved: SQS CMK encryption (fixed in smoke test round 1)
 
-**Root cause:** A partition column injection in `load_dynamodb.py` that caused a `KeyError` during argument parsing. The fix is a corrected argument handling block in the job script.
+Queue uses `sqs_managed_sse_enabled = true`. No action needed.
 
-**Workaround:** After applying the fix to `glue/python_shell/load_dynamodb.py`, re-sync scripts to S3 (Step 3, Glue scripts section) and re-run the execution. No Terraform change is required — the script is read directly from S3 at job start.
+### Resolved: ArchiveBatch JsonPath error (fixed 2026-06-17)
 
-### 3. SQS CMK encryption blocks EventBridge delivery
+`$$.Execution.Input.ctx.bucket` is unavailable inside a Map iterator (the original SM input has no `ctx`). Fixed by adding `ItemSelector` to the Map state, passing `{key, bucket}` from `$.ctx.bucket` of the pre-Map input so the iterator references `$.bucket` and `$.key` directly.
 
-**Symptom:** The EventBridge Pipe cannot write to the SQS queue; events are silently dropped.
+### Resolved: Step Functions KMS AccessDeniedException on S3 copy (fixed 2026-06-17)
 
-**Status:** Already resolved. The queue was switched from a customer-managed KMS key (`aws_kms_key`) to `sqs_managed_sse_enabled = true`. EventBridge does not support CMK-encrypted SQS without a complex cross-service KMS grant. No action required unless you revert this setting.
+`dev-step-functions-role` now has `kms:GenerateDataKey` on the S3 data KMS key for the archive `CopyObject` call.
 
 ---
 
