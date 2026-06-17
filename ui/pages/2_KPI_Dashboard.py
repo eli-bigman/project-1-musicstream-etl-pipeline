@@ -39,33 +39,32 @@ st.title("📊 KPI Dashboard")
 st.caption("Daily genre-level streaming metrics from DynamoDB. No PII displayed.")
 st.divider()
 
-# ── Filters ───────────────────────────────────────────────────────────────────
-col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
+# ── Date filter + Query button ────────────────────────────────────────────────
+col_f1, col_f3 = st.columns([3, 1])
 with col_f1:
     query_date = st.date_input("Date", value=date(2024, 6, 25))
-with col_f2:
-    if MOCK_MODE:
-        from lib.mock_data import GENRES as _GENRES
-    else:
-        _GENRES = [
-            "pop",
-            "rock",
-            "hip-hop",
-            "jazz",
-            "classical",
-            "electronic",
-            "r&b",
-            "country",
-            "metal",
-            "acoustic",
-        ]
-    genre_filter = st.selectbox("Genre", ["All"] + sorted(_GENRES))
 with col_f3:
     st.write("")
     st.write("")
     query_btn = st.button("🔍 Query", type="primary")
 
 date_str = query_date.isoformat()
+
+if MOCK_MODE:
+    from lib.mock_data import GENRES as _GENRES
+else:
+    _GENRES = [
+        "pop",
+        "rock",
+        "hip-hop",
+        "jazz",
+        "classical",
+        "electronic",
+        "r&b",
+        "country",
+        "metal",
+        "acoustic",
+    ]
 
 
 # ── Data fetch ────────────────────────────────────────────────────────────────
@@ -144,7 +143,7 @@ if not df_all.empty:
     col2.metric("Unique Listeners", f"{df_all['unique_listeners'].sum():,}")
     total_ms = df_all["total_listening_time_ms"].sum()
     col3.metric("Total Listening Hrs", f"{total_ms / 3_600_000:.0f}")
-    col4.metric("Active Genres", str(len(df_all)))
+    col4.metric("Genres Tracked", str(len(df_all)))
 else:
     st.info(f"No KPI data found for {date_str}.")
 
@@ -217,9 +216,18 @@ else:
 
 st.divider()
 
-# ── Genre Detail section (when a specific genre is selected) ──────────────────
-if genre_filter != "All":
-    st.subheader(f"🎸 Genre Detail — {genre_filter}")
+# ── Genre filter (placed here so users can drill down without scrolling up) ───
+st.subheader("🎸 Genre Detail")
+genre_filter = st.selectbox(
+    "Filter by genre to see detail, top songs, and 30-day trend",
+    ["All"] + sorted(_GENRES),
+    label_visibility="visible",
+)
+
+if genre_filter == "All":
+    st.caption("Select a genre above to see KPIs, top songs, and 30-day trend for that genre.")
+else:
+    st.markdown(f"**Showing detail for: {genre_filter}**")
     kpi = fetch_genre_kpi(genre_filter, date_str)
     if kpi:
         c1, c2, c3, c4 = st.columns(4)

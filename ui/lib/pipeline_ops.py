@@ -8,7 +8,7 @@ import boto3
 
 from .aws_clients import get_s3_client, get_sfn_client
 
-_RAW_BUCKET = os.environ.get("RAW_BUCKET", "musicstream-dev-raw")
+_RAW_BUCKET = os.environ.get("RAW_BUCKET", "musicstream-dev-raw-970547336735")
 _SM_ARN = os.environ.get("STATE_MACHINE_ARN", "")
 _SQS_URL = os.environ.get("SQS_BUFFER_QUEUE_URL", "")
 
