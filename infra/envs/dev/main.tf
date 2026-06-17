@@ -1,10 +1,13 @@
+data "aws_caller_identity" "current" {}
+
 locals {
-  env     = var.env
-  project = var.project
+  env          = var.env
+  project      = var.project
+  account_id   = data.aws_caller_identity.current.account_id
   common_tags = {
     Project   = var.project
     Env       = var.env
-    Owner     = "data-eng"
+    Owner     = "sandbox_user"
     ManagedBy = "terraform"
   }
 }
@@ -34,6 +37,7 @@ module "data_lake" {
   kms_key_arn   = module.kms_data.key_arn
   common_tags   = local.common_tags
   force_destroy = true # ephemeral dev — allow non-empty bucket destroy
+  bucket_suffix = local.account_id
 }
 
 # ── DynamoDB KPI Tables ────────────────────────────────────────────────────────
@@ -71,7 +75,8 @@ module "iam" {
     module.ddb.top_songs_daily_table_arn,
     module.ddb.top_genres_daily_table_arn,
   ]
-  kms_key_arn = module.kms_data.key_arn
+  kms_key_arn     = module.kms_data.key_arn
+  ddb_kms_key_arn = module.kms_ddb.key_arn
   # Use wildcard to break the circular dependency: iam↔lambda_validator↔iam and iam↔sm↔iam.
   # The IAM defaults ("*") are still scoped to the correct actions; resource-level tightening
   # can be applied post-deploy if this were a long-lived environment.
@@ -84,14 +89,15 @@ module "iam" {
 # ── Lambda Validator (D-17) ────────────────────────────────────────────────────
 
 module "lambda_validator" {
-  source                 = "../../modules/lambda-validator"
-  env                    = local.env
-  lambda_role_arn        = module.iam.lambda_validator_role_arn
-  scripts_bucket_name    = module.data_lake.scripts_bucket_name
-  quarantine_bucket_name = module.data_lake.quarantine_bucket_name
-  kms_key_arn            = module.kms_data.key_arn
-  lambda_version         = var.lambda_version
-  common_tags            = local.common_tags
+  source                   = "../../modules/lambda-validator"
+  env                      = local.env
+  lambda_role_arn          = module.iam.lambda_validator_role_arn
+  pipe_enrichment_role_arn = module.iam.pipe_enrichment_role_arn
+  scripts_bucket_name      = module.data_lake.scripts_bucket_name
+  quarantine_bucket_name   = module.data_lake.quarantine_bucket_name
+  kms_key_arn              = module.kms_data.key_arn
+  lambda_version           = var.lambda_version
+  common_tags              = local.common_tags
 }
 
 # ── Glue Jobs ──────────────────────────────────────────────────────────────────
@@ -123,6 +129,10 @@ module "sm" {
   archive_bucket_name          = module.data_lake.archive_bucket_name
   quarantine_bucket_name       = module.data_lake.quarantine_bucket_name
   raw_bucket_name              = module.data_lake.raw_bucket_name
+  reference_bucket_name        = module.data_lake.reference_bucket_name
+  genre_daily_table            = module.ddb.genre_daily_table_name
+  top_songs_daily_table        = module.ddb.top_songs_daily_table_name
+  top_genres_daily_table       = module.ddb.top_genres_daily_table_name
   kms_key_arn                  = module.kms_data.key_arn
   common_tags                  = local.common_tags
 }
@@ -130,12 +140,13 @@ module "sm" {
 # ── EventBridge Pipe (D-22) ────────────────────────────────────────────────────
 
 module "pipe" {
-  source            = "../../modules/eventbridge-pipes"
-  env               = local.env
-  sqs_queue_arn     = module.sqs.queue_arn
-  state_machine_arn = module.sm.state_machine_arn
-  pipe_role_arn     = module.iam.eventbridge_pipe_role_arn
-  common_tags       = local.common_tags
+  source                = "../../modules/eventbridge-pipes"
+  env                   = local.env
+  sqs_queue_arn         = module.sqs.queue_arn
+  state_machine_arn     = module.sm.state_machine_arn
+  pipe_role_arn         = module.iam.eventbridge_pipe_role_arn
+  enrichment_lambda_arn = module.lambda_validator.pipe_enrichment_arn
+  common_tags           = local.common_tags
 }
 
 # ── VPC Stub (disabled by default, D-27) ──────────────────────────────────────

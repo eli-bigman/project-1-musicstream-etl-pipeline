@@ -6,13 +6,12 @@ terraform {
 }
 
 provider "aws" {
-  region = var.region
-  # Uses default AWS credential chain (terraform_user static keys in ~/.aws/credentials)
-  # Same account (647594457599) as the personal profile.
+  region  = var.region
+  profile = "sandbox-musicstream-dev"
 }
 
 resource "aws_s3_bucket" "tfstate" {
-  bucket = "musicstream-tfstate"
+  bucket = "musicstream-tfstate-970547336735"
 
   lifecycle {
     prevent_destroy = true

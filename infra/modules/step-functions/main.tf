@@ -22,6 +22,10 @@ resource "aws_sfn_state_machine" "pipeline" {
     archive_bucket           = var.archive_bucket_name
     quarantine_bucket        = var.quarantine_bucket_name
     raw_bucket               = var.raw_bucket_name
+    reference_bucket         = var.reference_bucket_name
+    genre_daily_table        = var.genre_daily_table
+    top_songs_daily_table    = var.top_songs_daily_table
+    top_genres_daily_table   = var.top_genres_daily_table
   })
 
   logging_configuration {

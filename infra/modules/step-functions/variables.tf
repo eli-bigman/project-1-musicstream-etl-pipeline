@@ -30,6 +30,22 @@ variable "raw_bucket_name" {
   type = string
 }
 
+variable "reference_bucket_name" {
+  type = string
+}
+
+variable "genre_daily_table" {
+  type = string
+}
+
+variable "top_songs_daily_table" {
+  type = string
+}
+
+variable "top_genres_daily_table" {
+  type = string
+}
+
 variable "kms_key_arn" {
   type    = string
   default = null
