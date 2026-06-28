@@ -2,6 +2,8 @@
 
 **Date:** 2026-06-15
 
+> Update 2026-06-17: the AWS live-status section below was written before the current dev redeploy. MusicStream resources are now live again in account `970547336735`, region `eu-west-1`.
+
 ---
 
 ## CI/CD — What Was Failing and What Was Fixed
@@ -50,7 +52,25 @@ This came from the `fix/smoke-test-bugs` PR (#2) which switched SQS from CMK to 
 
 ## AWS Live Resources (Account 970547336735, eu-west-1)
 
-**Profile used:** `sandbox-musicsrteam-dev`
+**Profile used:** `sandbox-musicstream-dev`
+
+### Current MusicStream Status (updated 2026-06-17)
+
+MusicStream dev resources are live:
+
+| Resource | Name |
+|----------|------|
+| Raw bucket | `musicstream-dev-raw-970547336735` |
+| Archive bucket | `musicstream-dev-archive-970547336735` |
+| Quarantine bucket | `musicstream-dev-quarantine-970547336735` |
+| SQS buffer / DLQ | `dev-etl-buffer`, `dev-etl-buffer-dlq` |
+| EventBridge rule | `dev-s3-raw-csv-created` |
+| EventBridge Pipe | `dev-sqs-to-sfn-pipe` |
+| Step Functions | `dev-streaming-etl-sm` |
+
+The auto-trigger outage was caused by CMK-encrypted SQS queues. EventBridge matched S3 events but failed to deliver them to SQS because `events.amazonaws.com` was not allowed by the project CMK key policy. The queues now use SQS-managed SSE and the EventBridge rule filters keys with `wildcard = "streams/*.csv"`.
+
+`streams2.csv` currently exists in raw at `streams/yyyy=2024/mm=06/dd=26/streams2.csv`; it is not archived or quarantined.
 
 ### What IS Live (not your project)
 
@@ -63,11 +83,11 @@ The sandbox account is **shared** — it contains a different project's resource
 | Step Functions | `ecom-lakehouse-sm-dev` | Not MusicStream |
 | DynamoDB tables | `ecom-lakehouse-tf-locks`, `ecom_lakehouse_ingestion_ledger_dev`, `ecom_lakehouse_watermarks_dev` | Not MusicStream |
 
-### MusicStream ETL Resources — NOT Live
+### Historical note: MusicStream ETL Resources — NOT Live
 
-All MusicStream dev resources (`musicstream-dev-*` S3 buckets, DynamoDB tables, Lambda, Glue jobs) were **destroyed after the smoke test on 2026-06-14** (`terraform destroy` confirmed 63 resources removed).
+All MusicStream dev resources (`musicstream-dev-*` S3 buckets, DynamoDB tables, Lambda, Glue jobs) were **destroyed after the smoke test on 2026-06-14** (`terraform destroy` confirmed 63 resources removed). This is no longer the current state after the 2026-06-17 redeploy.
 
-The `musicstream-dev-raw-970547336735` S3 bucket does not exist — `NoSuchBucket` confirmed.
+At the time this historical note was written, `musicstream-dev-raw-970547336735` returned `NoSuchBucket`. It exists again after the 2026-06-17 redeploy.
 
 ### To Redeploy MusicStream to This Account
 

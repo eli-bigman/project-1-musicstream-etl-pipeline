@@ -53,18 +53,7 @@ date_str = query_date.isoformat()
 if MOCK_MODE:
     from lib.mock_data import GENRES as _GENRES
 else:
-    _GENRES = [
-        "pop",
-        "rock",
-        "hip-hop",
-        "jazz",
-        "classical",
-        "electronic",
-        "r&b",
-        "country",
-        "metal",
-        "acoustic",
-    ]
+    _GENRES = []
 
 
 # ── Data fetch ────────────────────────────────────────────────────────────────
@@ -77,6 +66,16 @@ def fetch_all_genres(date_str: str) -> list[dict]:
     from lib.dynamo_queries import get_all_genres_for_date
 
     return get_all_genres_for_date(date_str)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_all_genres_list(date_str: str) -> list[str]:
+    if MOCK_MODE:
+        from lib.mock_data import GENRES as _GENRES
+
+        return _GENRES
+    genres = fetch_all_genres(date_str)
+    return sorted({row["genre"] for row in genres})
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -131,6 +130,8 @@ def fetch_trend(genre: str, date_str: str, days_back: int = 30) -> list[dict]:
 with st.spinner("Querying DynamoDB…"):
     all_genres_data = fetch_all_genres(date_str)
     top_genres_data = fetch_top_genres(date_str)
+
+all_genres_list = sorted({row["genre"] for row in all_genres_data}) if all_genres_data else []
 
 df_all = pd.DataFrame(all_genres_data) if all_genres_data else pd.DataFrame()
 df_top = pd.DataFrame(top_genres_data) if top_genres_data else pd.DataFrame()
@@ -218,9 +219,10 @@ st.divider()
 
 # ── Genre filter (placed here so users can drill down without scrolling up) ───
 st.subheader("🎸 Genre Detail")
+genre_options = ["All"] + all_genres_list if all_genres_list else ["All"]
 genre_filter = st.selectbox(
     "Filter by genre to see detail, top songs, and 30-day trend",
-    ["All"] + sorted(_GENRES),
+    genre_options,
     label_visibility="visible",
 )
 
@@ -259,16 +261,45 @@ else:
     else:
         st.info(f"No top songs data for '{genre_filter}' on {date_str}.")
 
-    st.subheader(f"📈 30-Day Trend — {genre_filter}")
+    st.subheader(f"📈 Trend — {genre_filter}")
     trend = fetch_trend(genre_filter, date_str)
     if trend:
         df_trend = pd.DataFrame(trend)
+        df_trend["date"] = pd.to_datetime(df_trend["date"])
+
+        x_axis = st.selectbox(
+            "X axis for trend",
+            ["Date", "Week", "Month"],
+            label_visibility="visible",
+        )
+
+        if x_axis == "Date":
+            df_chart = df_trend.copy()
+            x_col = "date"
+            x_label = "Date"
+        elif x_axis == "Week":
+            df_chart = (
+                df_trend.groupby(df_trend["date"].dt.to_period("W").apply(lambda p: p.start_time))
+                .agg(listen_count=("listen_count", "sum"))
+                .reset_index()
+            )
+            x_col = "date"
+            x_label = "Week starting"
+        else:
+            df_chart = (
+                df_trend.groupby(df_trend["date"].dt.to_period("M").astype(str))
+                .agg(listen_count=("listen_count", "sum"))
+                .reset_index()
+            )
+            x_col = "date"
+            x_label = "Month"
+
         fig_trend = px.line(
-            df_trend,
-            x="date",
+            df_chart,
+            x=x_col,
             y="listen_count",
             markers=True,
-            labels={"listen_count": "Plays", "date": "Date"},
+            labels={"listen_count": "Plays", x_col: x_label},
             title=f"Listen Count — {genre_filter}",
             template="plotly_dark",
         )

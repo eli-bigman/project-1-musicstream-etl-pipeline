@@ -7,7 +7,7 @@ terraform {
 resource "aws_sqs_queue" "dlq" {
   name                      = "${var.env}-etl-buffer-dlq"
   message_retention_seconds = 1209600 # 14 days
-  kms_master_key_id         = var.kms_key_id
+  sqs_managed_sse_enabled   = true
   tags                      = var.common_tags
 }
 
@@ -15,7 +15,7 @@ resource "aws_sqs_queue" "buffer" {
   name                       = "${var.env}-etl-buffer"
   visibility_timeout_seconds = 300
   message_retention_seconds  = 86400
-  kms_master_key_id          = var.kms_key_id
+  sqs_managed_sse_enabled    = true
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.dlq.arn
@@ -60,7 +60,7 @@ resource "aws_cloudwatch_event_rule" "s3_raw" {
     detail = {
       bucket = { name = [var.raw_bucket_name] }
       object = {
-        key = [{ prefix = "streams/" }]
+        key = [{ wildcard = "streams/*.csv" }]
       }
     }
   })

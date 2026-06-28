@@ -17,11 +17,11 @@
 
 ```
               ┌───────────────────────┐
-              │  ParseInput           │   ← extract bucket, key from EventBridge event
+              │  ParseInput           │   ← extract bucket, keys[] from Pipe-enriched event
               └───────────┬───────────┘
                           ▼
               ┌───────────────────────┐
-              │  ValidateSchema       │   ← Glue Python Shell, sync (.sync)
+              │  ValidateSchema       │   ← Lambda invoke
               └───────────┬───────────┘
                           ▼
                      ┌──┴──┐
@@ -33,23 +33,16 @@
 
                   ▼ (valid)
               ┌───────────────────────┐
-              │  ValidateReferential  │   ← Glue Python Shell
-              └───────────┬───────────┘
-                          │ outputs: clean_path, dropped_count
-                          ▼
               ┌───────────────────────┐
-              │  TransformKPIs        │   ← Glue PySpark (.sync)
+              │  TransformAndCompute  │   ← Glue PySpark (.sync)
               └───────────┬───────────┘
                           ▼
               ┌───────────────────────┐
-              │  LoadDynamoDB (Map)   │   ← parallel item writers
-              │   • genre_daily       │
-              │   • top_songs_daily   │
-              │   • top_genres_daily  │
+              │  LoadDynamoDB         │   ← one Python Shell job, all 3 tables
               └───────────┬───────────┘
                           ▼
               ┌───────────────────────┐
-              │  ArchiveFile          │   ← Step Functions native S3 CopyObject + DeleteObject
+              │  ArchiveBatch         │   ← Map: S3 CopyObject + DeleteObject
               └───────────┬───────────┘
                           ▼
               ┌───────────────────────┐
@@ -233,17 +226,17 @@ The full ASL lives at `step_functions/pipeline.asl.json` and is templated by Ter
 
 ## 5. Input Contract
 
-EventBridge delivers:
+The state machine receives Pipe-enriched SQS batches:
 ```json
 {
   "detail": {
-    "bucket": { "name": "musicstream-dev-raw" },
-    "object": { "key": "streams/yyyy=2024/mm=06/dd=25/file_1234.csv" }
+    "bucket": { "name": "musicstream-dev-raw-970547336735" },
+    "object": { "keys": ["streams/yyyy=2024/mm=06/dd=25/file_1234.csv"] }
   }
 }
 ```
 
-Anything more complex (e.g. multiple files in one S3 `MultipartUploadCompleted`) is out of scope for v1.
+The raw S3 EventBridge event has a single `detail.object.key`; the Pipe enrichment Lambda batches one or more SQS records into `detail.object.keys`.
 
 ## 6. Observability Hooks
 
@@ -263,7 +256,7 @@ Anything more complex (e.g. multiple files in one S3 `MultipartUploadCompleted`)
 The original flow (§§ 2–3 above) collapses per the review. The current binding flow is:
 
 ```
-EventBridge ──▶ SQS buffer ──▶ Trigger Lambda ──▶ StartExecution(input: keys[])
+EventBridge ──▶ SQS buffer ──▶ EventBridge Pipe + enrichment Lambda ──▶ StartExecution(input: detail.object.keys[])
                                                                   │
                                                                   ▼
                                                     ParseInput (keys[], run_id)
@@ -305,7 +298,7 @@ Retry-table updates:
 - `ValidateSchema (Lambda)` — `Lambda.ServiceException`, `Lambda.Unknown`: 3× / 5 s × 2.0.
 - `LoadDynamoDB` (single task) — `States.TaskFailed`: 3× / 30 s × 2.0 (unchanged).
 
-The full revised ASL skeleton replaces the one in §3; the file at `step_functions/pipeline.asl.json` will reflect this layout when implementation begins.
+The full revised ASL skeleton replaces the one in §3; the file at `step_functions/pipeline.asl.json` is the deployed source of truth.
 
 ---
 
@@ -315,10 +308,10 @@ The full revised ASL skeleton replaces the one in §3; the file at `step_functio
 
 The `Trigger Lambda → StartExecution` step is replaced by **EventBridge Pipes**. The SM receives its input directly from the Pipe, which batches SQS messages and calls `StartExecution` natively. The SM itself is unchanged; only the component that calls it changes.
 
-SM input shape is identical to §8:
+SM input shape after enrichment:
 
 ```json
-{ "bucket": "musicstream-dev-raw", "keys": ["streams/…/file1.csv", "streams/…/file2.csv"] }
+{ "detail": { "bucket": { "name": "musicstream-dev-raw-970547336735" }, "object": { "keys": ["streams/…/file1.csv", "streams/…/file2.csv"] } } }
 ```
 
 The `ParseInput` `Pass` state extracts `bucket` + `keys[]` + injects `run_id` from `$$.Execution.Name` — no change there.

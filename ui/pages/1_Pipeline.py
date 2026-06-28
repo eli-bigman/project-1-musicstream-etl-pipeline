@@ -134,7 +134,63 @@ else:
 
 st.divider()
 
-# ── Section 3: Auto-refresh ───────────────────────────────────────────────────
+# ── Section 3: Quarantine Monitor ─────────────────────────────────────────────
+st.subheader("3 · Quarantine (Rejected Files)")
+st.caption("Files that failed T1 schema validation or T2 referential integrity. Check reason JSONs for details.")
+
+if MOCK_MODE:
+    st.info("Mock mode — no quarantine data to display.")
+else:
+    try:
+        import boto3
+        import json
+
+        s3 = boto3.client("s3", region_name="eu-west-1")
+        try:
+            response = s3.list_objects_v2(
+                Bucket=f"musicstream-{ENV}-quarantine-970547336735",
+                Prefix="streams/"
+            )
+            objects = response.get("Contents", [])
+
+            # Filter to just the CSV files (not the reason JSONs)
+            csv_files = [o for o in objects if o["Key"].endswith(".csv")]
+
+            if not csv_files:
+                st.success("✅ No quarantined files — all uploads passed validation!")
+            else:
+                quarantine_data = []
+                for obj in csv_files:
+                    key = obj["Key"]
+                    size_mb = obj["Size"] / 1_000_000
+                    # Try to fetch the reason JSON
+                    reason_key = key.replace(".csv", "_reason.json")
+                    try:
+                        resp = s3.get_object(Bucket=f"musicstream-{ENV}-quarantine-970547336735", Key=reason_key)
+                        reason = json.loads(resp["Body"].read().decode("utf-8"))
+                        reason_str = reason.get("error", reason.get("message", "Unknown"))
+                    except:
+                        reason_str = "See reason JSON for details"
+
+                    quarantine_data.append({
+                        "File": key.split("/")[-1],
+                        "Size (MB)": f"{size_mb:.1f}",
+                        "Reason": reason_str,
+                    })
+
+                if quarantine_data:
+                    import pandas as pd
+                    df_quarantine = pd.DataFrame(quarantine_data)
+                    st.dataframe(df_quarantine, use_container_width=True, hide_index=True)
+                    st.warning(f"⚠️ {len(csv_files)} file(s) quarantined. Review the reason and re-upload after fixing the issue.")
+        except Exception as e:
+            st.warning(f"Quarantine bucket not accessible or empty: {e}")
+    except ImportError:
+        st.info("S3 access not configured for this session.")
+
+st.divider()
+
+# ── Section 4: Auto-refresh ───────────────────────────────────────────────────
 auto_refresh = st.checkbox("Auto-refresh every 10 s", value=False)
 if auto_refresh:
     time.sleep(10)

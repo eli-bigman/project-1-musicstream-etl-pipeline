@@ -52,6 +52,18 @@ Deployed to sandbox account `970547336735` (eu-west-1). Full pipeline **SUCCEEDE
 | 9 | Step Functions CopyToArchive: KMS AccessDeniedException on S3 | `dev-step-functions-role` lacked `kms:GenerateDataKey` for the S3 data key | Added `KmsForS3Archive` statement to SF role IAM policy |
 | 10 | S3 bucket name collisions (409 BucketAlreadyExists) | Bucket names from prior DCE account already owned globally | Added `bucket_suffix = account_id` to all bucket names |
 
+### Auto-trigger outage revalidation (2026-06-17)
+
+The automatic trigger path was revalidated after the full pipeline had already been proven by direct Step Functions invocation.
+
+- Symptom: S3 uploads matched the EventBridge rule, but no messages reached `dev-etl-buffer`.
+- Evidence: `AWS/Events` showed `Invocations=1` and `FailedInvocations=1` for `dev-s3-raw-csv-created`; `AWS/SQS NumberOfMessagesSent` stayed at `0`.
+- Root cause: `dev-etl-buffer` and `dev-etl-buffer-dlq` were using the project CMK. With the root-principal-only KMS policy pattern from D-25, the AWS service principal `events.amazonaws.com` could not call KMS for SQS message encryption.
+- Secondary effect: manually sent SQS messages could also fail before enrichment if the Pipe consumer could not decrypt CMK-encrypted messages.
+- Fix applied: both SQS queues now use `sqs_managed_sse_enabled = true`.
+- Rule filter corrected: EventBridge now filters `detail.object.key` with `wildcard = "streams/*.csv"` instead of the invalid prefix+suffix-in-one-object pattern.
+- Verification: deployed rule is enabled on the default bus; SQS buffer has `SqsManagedSseEnabled=true`; Terraform reports no drift.
+
 ---
 
 ## AWS Resources (dev — LIVE)
@@ -111,6 +123,10 @@ After `terraform apply`, AWS sends a confirmation email. The link must be clicke
 ---
 
 ## How to Upload stream2.csv
+
+Current observed state on 2026-06-17: `streams2.csv` exists in raw at
+`s3://musicstream-dev-raw-970547336735/streams/yyyy=2024/mm=06/dd=26/streams2.csv`.
+It is not in archive or quarantine. The live SQS buffer is empty. The DLQ contains old malformed/manual payloads for reference CSV files, not `streams2.csv` in the samples inspected.
 
 1. Upload `streams2.csv` to `s3://musicstream-dev-raw-970547336735/streams/yyyy=YYYY/mm=MM/dd=DD/streams2.csv`
    - Replace `YYYY/MM/DD` with the date from `streams2.csv`'s first `listen_time` row.

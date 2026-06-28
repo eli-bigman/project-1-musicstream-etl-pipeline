@@ -26,7 +26,7 @@ The helper lives in `glue/shared/logging_utils.py`; jobs `from shared.logging_ut
 | `/aws/glue/jobs/${env}-transform-kpis`                | Glue driver + executors | 14 / 90 days         |
 | `/aws/glue/jobs/${env}-load-dynamodb`                 | Glue job stdout         | 14 / 90 days         |
 | `/aws/vendedlogs/states/${env}-streaming-etl-sm`      | Step Functions          | 30 / 365 days        |
-| `/aws/events/${env}-etl-rule`                         | EventBridge             | 7 / 30 days          |
+| `/aws/lambda/${env}-pipe-enrichment`                  | Pipe enrichment Lambda  | 14 / 90 days         |
 
 Set via Terraform `aws_cloudwatch_log_group.retention_in_days`.
 
@@ -34,6 +34,9 @@ Set via Terraform `aws_cloudwatch_log_group.retention_in_days`.
 
 ### Built-in (free)
 - `AWS/States ExecutionsStarted / ExecutionsSucceeded / ExecutionsFailed`
+- `AWS/Events Invocations / FailedInvocations` for `dev-s3-raw-csv-created`
+- `AWS/SQS NumberOfMessagesSent`, `ApproximateNumberOfMessagesVisible`, `ApproximateNumberOfMessagesNotVisible` for `dev-etl-buffer`
+- `AWS/SQS ApproximateNumberOfMessagesVisible` for `dev-etl-buffer-dlq`
 - `AWS/Glue glue.driver.aggregate.numCompletedTasks`, `glue.driver.aggregate.elapsedTime`
 - `AWS/DynamoDB ConsumedWriteCapacityUnits`, `WriteThrottleEvents`, `SuccessfulRequestLatency`
 - `AWS/S3 NumberOfObjects` on `quarantine/`
@@ -59,6 +62,7 @@ Single CloudWatch dashboard `${env}-etl-overview` with five panels:
 3. **Compute** — Glue elapsed time per job, DPU-hours.
 4. **Storage** — DynamoDB consumed write capacity, throttle events, item count.
 5. **Quarantine** — count of objects in `quarantine/`, age of oldest.
+6. **Trigger health** — EventBridge rule invocations vs failed invocations, SQS buffer depth, SQS DLQ depth.
 
 Dashboard is defined in Terraform.
 

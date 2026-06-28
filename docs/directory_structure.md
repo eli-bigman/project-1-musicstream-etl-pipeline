@@ -40,16 +40,20 @@ The repo separates **infrastructure**, **application code**, **tests**, and **do
 │   │   ├── step-functions/
 │   │   ├── dynamodb-kpi-tables/
 │   │   ├── iam-roles/
-│   │   └── eventbridge-trigger/
+│   │   ├── sqs-buffer/
+│   │   ├── eventbridge-pipes/
+│   │   ├── lambda-validator/
+│   │   ├── monitoring/
+│   │   ├── kms/
+│   │   └── vpc-stub/
 │   └── bootstrap/              ← one-time state bucket + lock table
 │
 ├── glue/                       ← Glue job source — what gets uploaded to S3 scripts/
 │   ├── pyspark/
 │   │   └── transform_kpis.py
 │   ├── python_shell/
-│   │   ├── validate_schema.py
-│   │   ├── validate_referential.py
-│   │   └── load_dynamodb.py
+│   │   ├── load_dynamodb.py
+│   │   └── refresh_reference.py
 │   ├── shared/                 ← packaged as a wheel & passed via --extra-py-files
 │   │   ├── __init__.py
 │   │   ├── schemas.py          ← pydantic / dataclass schema definitions
@@ -60,6 +64,12 @@ The repo separates **infrastructure**, **application code**, **tests**, and **do
 │
 ├── step_functions/             ← ASL definitions (kept out of Terraform for diffability)
 │   └── pipeline.asl.json
+│
+├── lambda/                     ← Lambda source packaged into scripts bucket
+│   ├── validate_schema/
+│   │   └── handler.py
+│   └── pipe_enrichment/
+│       └── handler.py
 │
 ├── tests/
 │   ├── unit/
@@ -113,9 +123,10 @@ The repo separates **infrastructure**, **application code**, **tests**, and **do
 
 ## Naming Conventions
 
-- **Buckets.** `${project}-${env}-${purpose}` → e.g. `musicstream-dev-raw`, `musicstream-dev-archive`, `musicstream-dev-quarantine`, `musicstream-dev-scripts`.
+- **Buckets.** `${project}-${env}-${purpose}-${account_id}` in dev → e.g. `musicstream-dev-raw-970547336735`, `musicstream-dev-archive-970547336735`.
 - **DynamoDB tables.** `${env}_genre_daily_kpi`, `${env}_top_songs_daily`, `${env}_top_genres_daily`.
-- **Glue jobs.** `${env}-validate-schema`, `${env}-validate-referential`, `${env}-transform-kpis`, `${env}-load-dynamodb`.
+- **Lambda functions.** `${env}-validate-schema`, `${env}-pipe-enrichment`.
+- **Glue jobs.** `${env}-transform-kpis`, `${env}-load-dynamodb`.
 - **Step Functions state machine.** `${env}-streaming-etl-sm`.
 - **CloudWatch log groups.** `/aws/glue/jobs/${job-name}`.
 
@@ -128,8 +139,8 @@ musicstream-${env}-raw/
     └── ...
 
 musicstream-${env}-reference/
-├── users/users.csv
-└── songs/songs.csv
+├── users/users.parquet
+└── songs/songs.parquet
 
 musicstream-${env}-archive/
 └── streams/yyyy=…/mm=…/dd=…/file_1234.csv          ← post-success

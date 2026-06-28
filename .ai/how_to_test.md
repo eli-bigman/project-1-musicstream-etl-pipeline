@@ -23,6 +23,7 @@ This document is the single reference for running every test layer in this proje
 | Lambda validator | `dev-validate-schema` |
 | Lambda enrichment | `dev-pipe-enrichment` |
 | Glue jobs | `dev-transform-kpis` (G.1X × 2), `dev-load-dynamodb` (0.0625 DPU) |
+| SQS encryption | SQS-managed SSE (`sqs_managed_sse_enabled = true`) |
 
 > Replace `<account-id>` in commands below with `970547336735`. Set `bucket_suffix = "970547336735"` in `infra/envs/dev/terraform.tfvars` when deploying to a different account.
 
@@ -299,6 +300,8 @@ aws s3 cp data/streams/streams1.csv \
 
 EventBridge detects the S3 PUT event, delivers it to SQS, and the EventBridge Pipe batches messages over a 120-second window. The `dev-pipe-enrichment` Lambda enrichment step reshapes the SQS batch into the `{detail:{bucket:{name},object:{keys:[...]}}}` format the ASL expects. Wait 2–3 minutes before checking for an execution. This path exercises the full S3 → EventBridge → SQS → Pipe → enrichment Lambda → Step Functions flow.
 
+The EventBridge rule only matches raw bucket object-created events whose key matches `streams/*.csv`. This is intentionally implemented with EventBridge `wildcard` matching. Do not replace it with `{prefix = "streams/", suffix = ".csv"}` inside one comparison object; AWS rejects that shape because each comparison object can contain only one operator.
+
 **Method B — Invoke Step Functions directly (recommended for ETL testing):**
 
 ```bash
@@ -513,7 +516,28 @@ Three separate causes were fixed:
 
 ### Resolved: SQS CMK encryption (fixed in smoke test round 1)
 
-Queue uses `sqs_managed_sse_enabled = true`. No action needed.
+Queues use `sqs_managed_sse_enabled = true`. This is required for this architecture because the project KMS policy uses root-principal delegation only. EventBridge is an AWS service principal (`events.amazonaws.com`), not an IAM role in the account, so it could not use the project CMK to encrypt SQS messages. The visible symptom was EventBridge `FailedInvocations` for `dev-s3-raw-csv-created` and zero SQS messages sent.
+
+Validation commands:
+
+```bash
+aws sqs get-queue-attributes \
+  --queue-url https://sqs.eu-west-1.amazonaws.com/970547336735/dev-etl-buffer \
+  --attribute-names SqsManagedSseEnabled KmsMasterKeyId \
+  --profile sandbox-musicstream-dev \
+  --region eu-west-1
+
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/Events \
+  --metric-name FailedInvocations \
+  --dimensions Name=RuleName,Value=dev-s3-raw-csv-created \
+  --start-time <utc-start> \
+  --end-time <utc-end> \
+  --period 300 \
+  --statistics Sum \
+  --profile sandbox-musicstream-dev \
+  --region eu-west-1
+```
 
 ### Resolved: ArchiveBatch JsonPath error (fixed 2026-06-17)
 

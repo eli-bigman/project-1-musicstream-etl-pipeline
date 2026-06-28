@@ -154,6 +154,20 @@ states:StartExecution → SM input = { bucket, keys: [...] }
 
 The `--immediate` dev shortcut previously documented (bypass the wait by invoking the trigger Lambda) is now replaced by **manually publishing a JSON message to SQS** with the desired key list, which the Pipe then routes to the SM instantly.
 
-### 9.4 Late-arrival policy unchanged
+### 9.4 SQS encryption and EventBridge matching correction
+
+The SQS buffer and DLQ must use SQS-managed SSE (`sqs_managed_sse_enabled = true`), not the project CMK. The project CMK policy delegates to the account root principal only; AWS service principals such as `events.amazonaws.com` cannot use that delegation. If SQS uses the project CMK, S3 events match the EventBridge rule but delivery to SQS fails.
+
+The EventBridge rule should filter stream files with:
+
+```hcl
+object = {
+  key = [{ wildcard = "streams/*.csv" }]
+}
+```
+
+Do not use one comparison object with both `prefix` and `suffix`; EventBridge comparison operators are one-per-object. The wildcard pattern matches partitioned stream keys such as `streams/yyyy=2024/mm=06/dd=26/streams2.csv`.
+
+### 9.5 Late-arrival policy unchanged
 
 The < 7 d / 7–30 d / > 30 d treatment in §4 holds — the buffering layer does not alter how late files are processed once the SM picks them up.
