@@ -1,274 +1,60 @@
-# MusicStream — Streaming Analytics ETL Pipeline
+# MusicStream — Event-Driven Streaming Analytics ETL Pipeline
 
-An event-driven, micro-batch ETL pipeline that processes music streaming data at scale. Raw CSV files land in S3, trigger an automated pipeline that validates, transforms, and computes six genre-level KPIs, and makes results queryable from a Streamlit dashboard within minutes of arrival — with full infrastructure managed as code on AWS.
+MusicStream is an event-driven, micro-batch ETL pipeline designed to ingest, validate, transform, and analyze user streaming behavior at scale. Built as a fully serverless architecture on AWS, the system automatically processes raw stream datasets as they arrive, computes daily genre-level metrics, and exposes aggregates to a low-latency business dashboard.
 
 ---
 
 ## Architecture
 
-```
-S3 PUT (raw/streams/yyyy=YYYY/mm=MM/dd=DD/)
-         │
-         ▼
-  EventBridge S3 notification
-         │
-         ▼
-  SQS Buffer Queue ◄──────────────── Dead-Letter Queue
-  (BatchSize=50, Window=120s)
-         │
-         ▼
-  EventBridge Pipe
-         │
-         ▼
-  ┌─────────────────────────────────────────────────┐
-  │          Step Functions State Machine            │
-  │                                                  │
-  │  ParseInput ──► ValidateSchema (Lambda T1)       │
-  │                      │                           │
-  │              ┌────────┴────────┐                 │
-  │              │ valid           │ invalid          │
-  │              ▼                 ▼                  │
-  │    TransformAndCompute    Quarantine + Alarm      │
-  │    (Glue PySpark)                                 │
-  │    • T2 ref-integrity left-join                   │
-  │    • T3 business rules                            │
-  │    • 6 KPI aggregations                           │
-  │    • → 3 Parquet datasets in S3                  │
-  │              │                                    │
-  │              ▼                                    │
-  │    LoadDynamoDB                                   │
-  │    (Glue Python Shell)                            │
-  │    • genre_daily_kpi                              │
-  │    • top_songs_daily                              │
-  │    • top_genres_daily                             │
-  │              │                                    │
-  │              ▼                                    │
-  │    ArchiveBatch (S3 copy + delete)                │
-  │              │                                    │
-  │              ▼                                    │
-  │           Success                                 │
-  └─────────────────────────────────────────────────┘
-         │
-         ▼
-  Streamlit Dashboard (boto3 → DynamoDB direct)
-```
+![MusicStream Architecture](musicstream_architecture.png)
 
 ---
 
-## Key Design Decisions
+## Core Engineering & Design Decisions
 
-- **EventBridge Pipe with SQS batching** — accumulates up to 50 file notifications over 120 seconds before firing one Step Functions execution, reducing Glue job starts from one-per-file to one-per-batch.
+Rather than executing standard periodic cron batches, the system implements a modern, event-driven architecture using several senior-level design decisions to balance cost, performance, and data quality:
 
-- **Lambda T1 schema gate with 4 KB range read** — validates CSV headers before Glue workers spin up. Invalid files are quarantined in under 1 second instead of burning 60–90 seconds of Glue DPU time.
+### 1. Ingestion: Event-Driven Micro-Batching
+* **The Design:** S3 Object Created events trigger an EventBridge rule that routes events to an SQS Buffer Queue. An EventBridge Pipe polls the SQS queue, batches records over a 120-second window (or up to 50 records), reshapes them via a lightweight Lambda enrichment function (`dev-pipe-enrichment`), and invokes the Step Functions workflow.
+* **The Rationale:** Processing files individually would require spinning up a new Glue PySpark cluster for every S3 upload, which would be financially ruinous under high file frequency. Buffering events in SQS and micro-batching them ensures we only spin up Glue workers for cost-effective, bulk transformations.
 
-- **Left-join referential integrity (T2)** — rows with unknown `track_id` or `user_id` are quarantined with full context, not silently dropped. KPI numbers are always accurate; data quality problems are always visible.
+### 2. Validation: Progressive 3-Tier Gate
+To protect downstream database states and minimize compute expenses, we enforce a strict 3-tier progressive validation contract:
+* **Tier 1 (Schema Validation - Lambda):** A lightweight Lambda function (`dev-validate-schema`) validates basic structural schema. It performs a **4 KB S3 Range Request** to read only the CSV header rather than downloading the entire file. This runs in milliseconds and prevents expensive Glue DPUs from spinning up for corrupted or improperly partitioned files.
+* **Tier 2 (Referential Integrity - PySpark Left-Join):** Validates that all incoming `track_id` and `user_id` values exist in the songs and users reference datasets. Unmatched rows are partitioned out and written to the S3 Quarantine bucket (`ref-fail/`) with full run context, keeping data errors visible rather than silently dropping them.
+* **Tier 3 (Domain Business Rules - PySpark):** Filters out anomalies and bots (e.g. streaming tracks longer than 30 minutes, or a single user streaming the same track more than 1,000 times a day).
 
-- **Parquet reference data with broadcast join** — songs and users reference tables stored as Parquet in S3. PySpark broadcasts them to every worker for zero-shuffle joins against stream data.
+### 3. Storage & Idempotency: Dynamic Partitioning & Upserts
+* **The Design:** PySpark aggregates the clean records into 6 daily genre-level KPIs and writes them to S3 in Parquet format using Spark's **dynamic partition overwrite mode** (`spark.sql.sources.partitionOverwriteMode = dynamic`). The Glue Python Shell loader reads the Parquet outputs and writes them into three distinct DynamoDB KPI tables.
+* **The Rationale:** 
+  * Dynamic overwrite ensures that Spark only overwrites partitions for dates present in the current batch, leaving other historical dates untouched.
+  * DynamoDB writes use deterministic primary keys (composed of date, genre, and rank) and write via `PutItem` (upsert). If the same raw stream is reprocessed, the pipeline overwrites the previous aggregates without duplicating data.
+  * S3 files are moved to the S3 Archive bucket and deleted from raw post-execution, preventing infinite re-triggering loops.
 
-- **Hive partition column injection** — PySpark's `partitionBy("listen_date")` removes the column from Parquet file bytes (it lives only in the S3 key path). The Python Shell loader re-injects `listen_date` by parsing `key=value` segments from the S3 object key before writing to DynamoDB.
+### 4. Database Modeling: Multi-Table over Single-Table
+* **The Design:** Three dedicated, purpose-built DynamoDB tables: `genre_daily_kpi`, `top_songs_daily`, and `top_genres_daily`.
+* **The Rationale:** While Single-Table Design is standard in transactional systems, it adds unnecessary complexity for analytical querying. Because our dashboard queries these three analytical KPIs independently, dedicated tables allow us to size, provision, and monitor read/write capacities separately.
 
-- **KMS root-principal delegation** — CMK key policies grant only the account root; IAM policies on roles control actual access. This breaks the Terraform circular dependency between KMS keys, IAM roles, and the resources they protect.
-
-- **Direct boto3 to DynamoDB** — the Streamlit dashboard calls DynamoDB directly without an API Gateway layer. The dashboard is an internal ops tool running on the operator's machine, which already holds AWS credentials. API Gateway would add latency and cost for no benefit.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Storage | S3 (raw, reference, archive, quarantine, scripts) |
-| Compute | AWS Glue PySpark 4.0 (transform) + Glue Python Shell 3.0 (load) |
-| Validation | AWS Lambda Python 3.12 |
-| Orchestration | AWS Step Functions (Standard Workflow) |
-| Eventing | EventBridge S3 notifications + EventBridge Pipe |
-| Buffering | Amazon SQS |
-| Database | Amazon DynamoDB (3 tables, on-demand) |
-| Encryption | AWS KMS (CMK per data classification layer) |
-| IaC | Terraform ≥ 1.6 (11 modules) |
-| Monitoring | CloudWatch alarms + dashboard, SNS, EventBridge (Glue state changes) |
-| Dashboard | Streamlit + boto3 |
-| CI/CD | GitHub Actions (lint → checkov → semgrep → deploy) |
-| Code Quality | ruff + black + pre-commit |
+### 5. Security & Decoupling: Root-Principal Key Delegation
+* **The Design:** KMS Key Policies delegate admin/use permissions entirely to the AWS Account Root Principal, allowing role permissions to be managed natively via IAM policies.
+* **The Rationale:** Decoupling KMS policies from specific role ARNs breaks the classic Terraform circular dependency (Role needs KMS Key; KMS Key Policy needs Role ARN) and permits clean, modular deployments.
 
 ---
 
-## DynamoDB Schema
+## Technology Stack
 
-| Table | PK | SK | Access Pattern |
-|-------|----|----|----------------|
-| `{env}_genre_daily_kpi` | `genre` (S) | `date` (S) | Genre trend over date range |
-| `{env}_top_songs_daily` | `genre` (S) | `date_rank` (S) e.g. `2024-06-25#01` | Top 3 songs per genre per day |
-| `{env}_top_genres_daily` | `date` (S) | `rank` (N) | Top 5 genres on a date |
-
-GSI `date_genre_index` on `genre_daily_kpi` (PK=`date`, SK=`genre`) supports the "all genres for a date" query.
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- AWS CLI configured with a profile that has appropriate permissions
-- Terraform ≥ 1.6
-- Python ≥ 3.11
-- `pre-commit` installed (`pip install pre-commit && pre-commit install`)
-
-### 1. Bootstrap the Terraform state backend (once per account)
-
-```powershell
-# Create the S3 state bucket and DynamoDB lock table
-aws s3api create-bucket `
-  --bucket musicstream-tfstate `
-  --region eu-west-1 `
-  --create-bucket-configuration LocationConstraint=eu-west-1 `
-  --profile <your-aws-profile>
-
-aws s3api put-bucket-versioning `
-  --bucket musicstream-tfstate `
-  --versioning-configuration Status=Enabled `
-  --profile <your-aws-profile>
-
-aws dynamodb create-table `
-  --table-name musicstream-tfstate-lock `
-  --billing-mode PAY_PER_REQUEST `
-  --attribute-definitions AttributeName=LockID,AttributeType=S `
-  --key-schema AttributeName=LockID,KeyType=HASH `
-  --region eu-west-1 `
-  --profile <your-aws-profile>
-```
-
-> **Sandbox/DCE accounts:** S3 bucket names are globally unique. If `musicstream-tfstate` is taken, append the account ID: `musicstream-tfstate-<account-id>` and update `infra/envs/dev/backend.tf` accordingly. Set `bucket_suffix = "<account-id>"` in `terraform.tfvars` so data lake bucket names are also unique.
-
-### 2. Deploy the dev infrastructure
-
-```powershell
-$env:AWS_PROFILE = "<your-aws-profile>"
-terraform -chdir=infra/envs/dev init
-terraform -chdir=infra/envs/dev apply
-```
-
-### 3. Build and upload Glue artifacts
-
-```powershell
-# Build the shared Python wheel
-cd glue
-pip install build
-python -m build --wheel --outdir ../dist
-cd ..
-
-# Upload Lambda ZIP
-Compress-Archive lambda/validate_schema/handler.py dist/validate_schema.zip -Force
-aws s3 cp dist/validate_schema.zip `
-  s3://musicstream-dev-scripts/lambda/0.1.0/validate_schema.zip `
-  --profile <your-aws-profile>
-
-# Upload shared wheel and Glue scripts
-aws s3 cp dist/shared-0.1.0-py3-none-any.whl `
-  s3://musicstream-dev-scripts/glue/shared/ `
-  --profile <your-aws-profile>
-aws s3 sync glue/ s3://musicstream-dev-scripts/glue/ --profile <your-aws-profile>
-```
-
-### 4. Upload reference data (Parquet format required)
-
-```python
-# Convert reference CSVs to Parquet locally before uploading
-import pandas as pd
-pd.read_csv("data/songs/songs.csv").to_parquet("dist/songs.parquet", index=False)
-pd.read_csv("data/users/users.csv").to_parquet("dist/users.parquet", index=False)
-```
-
-```powershell
-aws s3 cp dist/songs.parquet s3://musicstream-dev-reference/songs/ --profile <your-aws-profile>
-aws s3 cp dist/users.parquet s3://musicstream-dev-reference/users/ --profile <your-aws-profile>
-```
-
-> Do **not** upload CSV files to the reference bucket — Glue reads the full prefix and will fail if CSVs are present.
-
-### 5. Trigger the pipeline
-
-**Method A — Upload a stream file (automated path via EventBridge Pipe):**
-```powershell
-aws s3 cp data/streams/streams1.csv `
-  s3://musicstream-dev-raw/streams/yyyy=2024/mm=06/dd=25/streams1.csv `
-  --profile <your-aws-profile>
-# Wait ~2 minutes for the SQS batch window, then check Step Functions console
-```
-
-**Method B — Direct invocation (recommended for testing):**
-```powershell
-aws stepfunctions start-execution `
-  --state-machine-arn arn:aws:states:eu-west-1:<account-id>:stateMachine:dev-streaming-etl-sm `
-  --name "test-$(Get-Date -Format 'yyyyMMddHHmmss')" `
-  --input '{"detail":{"bucket":{"name":"musicstream-dev-raw"},"object":{"keys":["streams/yyyy=2024/mm=06/dd=25/streams1.csv"]}}}' `
-  --profile <your-aws-profile>
-```
-
-### 6. Verify results
-
-```powershell
-# Check DynamoDB item counts
-aws dynamodb scan --table-name dev_genre_daily_kpi --select COUNT --profile <your-aws-profile>
-aws dynamodb scan --table-name dev_top_songs_daily --select COUNT --profile <your-aws-profile>
-aws dynamodb scan --table-name dev_top_genres_daily --select COUNT --profile <your-aws-profile>
-```
-
----
-
-## Run Tests
-
-```powershell
-# Unit and integration tests
-pytest tests/unit tests/integration -q
-
-# Terraform validation
-terraform -chdir=infra/envs/dev validate
-tflint --recursive
-checkov -d infra/
-
-# SAST
-semgrep --config p/python glue/ lambda/ ui/
-
-# Code style
-pre-commit run --all-files
-```
-
----
-
-## Streamlit Dashboard
-
-The dashboard queries DynamoDB directly via boto3 — no API layer needed.
-
-```powershell
-# With AWS credentials
-cd ui
-streamlit run app.py
-
-# Without credentials (uses mock data)
-$env:MOCK_MODE = "true"
-streamlit run app.py
-```
-
-The dashboard displays:
-- Genre KPI trends over configurable date ranges
-- Top 3 songs per genre per day
-- Top 5 genres ranked by total plays
-
----
-
-## Teardown
-
-```powershell
-# Destroy all 63 AWS resources
-terraform -chdir=infra/envs/dev destroy --profile <your-aws-profile>
-
-# Clean up the state backend (versioned bucket — delete all versions first)
-aws s3api list-object-versions --bucket musicstream-tfstate --profile <your-aws-profile> `
-  | ... # delete all versions and delete markers
-aws s3api delete-bucket --bucket musicstream-tfstate --profile <your-aws-profile>
-aws dynamodb delete-table --table-name musicstream-tfstate-lock --profile <your-aws-profile>
-```
+| Layer | Technology | Operational Rationale |
+|-------|------------|-----------------------|
+| **Storage** | Amazon S3 | Serverless, encrypted data lake partitioned by Hive conventions. |
+| **Compute (Transform)** | AWS Glue PySpark 4.0 | Distributed joins and aggregations using a 2-worker G.1X cluster. |
+| **Compute (Load)** | AWS Glue Python Shell | Cost-efficient loading (0.0625 DPU) optimized for sequential I/O writes. |
+| **Validation Gate** | AWS Lambda Python 3.12 | Microsecond executions; performs 4 KB S3 range requests to check headers. |
+| **Orchestration** | AWS Step Functions | Standard state machine managing error branching, retries, and state transitions. |
+| **Eventing & Buffering** | EventBridge + Amazon SQS | Loose coupling, batching, and reliable event delivery. |
+| **Database** | Amazon DynamoDB | Fully managed, low-latency NoSQL database configured for PAY_PER_REQUEST. |
+| **Security** | AWS KMS | Customer Managed Keys (CMKs) enforcing envelope encryption at rest. |
+| **IaC** | Terraform ≥ 1.6 | 11 reusable infrastructure modules managing bootstrap remote states and environments. |
+| **UI Dashboard** | Streamlit + Boto3 | Deployed as an internal tool; reads directly from DynamoDB using local AWS profiles. |
 
 ---
 
@@ -276,34 +62,45 @@ aws dynamodb delete-table --table-name musicstream-tfstate-lock --profile <your-
 
 ```
 .
-├── docs/                    # Architecture and design documentation
+├── .ai/                     # Portfolio docs: architecture decisions, testing guide, interview Q&A
+├── docs/                    # Architectural planning, schemas, and design constraints
 ├── infra/
-│   ├── bootstrap/           # State bucket + lock table (run once)
-│   ├── envs/dev/            # Dev environment root module
-│   └── modules/             # 11 reusable Terraform modules
+│   ├── bootstrap/           # Remote state S3 bucket and DynamoDB lock table module
+│   ├── envs/dev/            # Dev environment environment configuration
+│   └── modules/             # 11 reusable infrastructure modules (KMS, S3, IAM, SQS, Glue, Lambda, etc.)
 ├── glue/
-│   ├── pyspark/             # transform_kpis.py — T2+T3+KPI computation
-│   ├── python_shell/        # load_dynamodb.py — DynamoDB writes
-│   └── shared/              # Shared wheel: logging_utils, dynamo_utils, s3_utils, schemas
+│   ├── pyspark/             # transform_kpis.py — PySpark left-join + 6 KPI aggregates
+│   ├── python_shell/        # load_dynamodb.py — reads Parquet, writes to DynamoDB
+│   └── shared/              # Shared wheel: logging, database utils, S3 helpers, schemas
 ├── lambda/
-│   └── validate_schema/     # T1 schema gate — 4 KB range read
+│   └── validate_schema/     # T1 Schema Gate Lambda handler
 ├── step_functions/
-│   └── pipeline.asl.json    # State machine definition (Terraform templatefile)
+│   └── pipeline.asl.json    # Step Functions Amazon States Language (ASL) definition
 ├── ui/
-│   ├── app.py               # Streamlit entry point
-│   ├── pages/               # Dashboard pages
-│   └── lib/                 # dynamo_queries, mock_data, aws_clients
+│   ├── app.py               # Streamlit application entry point
+│   ├── pages/               # Multi-page dashboard pages
+│   └── lib/                 # DynamoDB queries, mock client fixtures, AWS clients
 ├── tests/
-│   ├── unit/                # Offline tests
-│   ├── integration/         # Require deployed AWS resources
-│   └── e2e/                 # Smoke test stub
-└── .ai/                     # Portfolio docs: architecture decisions, testing guide, interview Q&A
+│   ├── unit/                # Offline unit tests (Lambda schema validation, utility functions)
+│   └── integration/         # Active AWS connectivity tests
+└── musicstream_architecture.png  # Architecture visual diagram
 ```
 
 ---
 
-## CI/CD
+## CI/CD and Automation
 
-- **`ci.yml`** — runs on every push: ruff, black, pytest unit, terraform validate, checkov, semgrep
-- **`cd-dev.yml`** — deploys to dev on merge to `main`
-- **`cd-prod.yml`** — triggers on semver tag push; plans prod, blocks apply behind GitHub environment manual approval gate
+The repository includes fully automated pipelines managed via GitHub Actions:
+
+1. **Continuous Integration (`ci.yml`):**
+   * Triggered on every Pull Request and commit to `main` and `dev`.
+   * Enforces code formatting checks using `ruff` and `black`.
+   * Executes offline unit tests using `pytest`.
+   * Validates Terraform HCL syntax (`terraform validate` and `tflint`).
+   * Runs static security audits on infrastructure modules (`checkov`) and application code (`semgrep`).
+
+2. **Continuous Deployment (`cd-dev.yml`):**
+   * Automatically packages Lambda functions, builds the shared Python wheel, syncs scripts to S3, and applies Terraform infrastructure changes to the `dev` environment on merges to `main`.
+
+3. **Continuous Deployment (`cd-prod.yml`):**
+   * Triggered on semver tags. Generates a dry-run Terraform plan for the production environment and holds execution behind a GitHub environment manual approval gate.
