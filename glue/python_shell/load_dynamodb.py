@@ -28,21 +28,17 @@ REQUIRED_ARGS = [
 
 
 def _partition_values_from_key(key: str) -> dict:
-    """Extract Hive-style partition key=value pairs from an S3 key path."""
-    parts = {}
-    for segment in key.split("/"):
-        if "=" in segment:
-            k, v = segment.split("=", 1)
-            parts[k] = v
-    return parts
+    """Extract Hive-style partition key=value pairs from an S3 key path.
+
+    e.g. "kpi/genre_daily/listen_date=2024-06-25/part-0.parquet"
+         → {"listen_date": "2024-06-25"}
+    """
+    import re
+    return {m.group(1): m.group(2) for m in re.finditer(r"([^/=]+)=([^/]+)/", key)}
 
 
 def _iter_parquet_rows(bucket: str, prefix: str):
-    """Yield raw row dicts from all Parquet files under prefix.
-
-    Partition columns (e.g. listen_date=2024-06-25) are injected into each row
-    because partitionBy() removes them from the Parquet file data.
-    """
+    """Yield row dicts from all Parquet files under prefix, with partition columns injected."""
     import os
     import tempfile
 
@@ -51,15 +47,19 @@ def _iter_parquet_rows(bucket: str, prefix: str):
     for key in keys:
         if not (key.endswith(".parquet") or "part-" in key.split("/")[-1]):
             continue
-        partition_extras = _partition_values_from_key(key)
-        local = os.path.join(tempfile.gettempdir(), key.split("/")[-1])
+
+        partition_vals = _partition_values_from_key(key)
+
+        local = os.path.join(tempfile.gettempdir(), key.replace("/", "_"))
         s3.download_file(bucket, key, local)
-        pf = pq.ParquetFile(local)
-        for batch in pf.iter_batches():
-            for row in batch.to_pylist():
-                row.update(partition_extras)
-                yield row
-        os.remove(local)
+        try:
+            pf = pq.ParquetFile(local)
+            for batch in pf.iter_batches():
+                for row in batch.to_pylist():
+                    row.update(partition_vals)
+                    yield row
+        finally:
+            os.remove(local)
 
 
 def load_one_kind(kpi_root: str, kpi_kind: str, table_name: str, logger) -> int:

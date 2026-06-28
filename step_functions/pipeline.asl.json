@@ -113,9 +113,13 @@
       "Parameters": {
         "JobName": "${load_dynamodb_job}",
         "Arguments": {
-          "--kpi_parquet_root": "s3://${raw_bucket}/kpi/",
-          "--run_id.$":          "$.ctx.run_id",
-          "--env":               "dev"
+          "--JOB_NAME":               "${load_dynamodb_job}",
+          "--kpi_parquet_root":       "s3://${raw_bucket}/kpi/",
+          "--run_id.$":               "$.ctx.run_id",
+          "--env":                    "dev",
+          "--genre_daily_table":      "${genre_daily_table}",
+          "--top_songs_daily_table":  "${top_songs_daily_table}",
+          "--top_genres_daily_table": "${top_genres_daily_table}"
         }
       },
       "ResultPath": "$.load",
@@ -140,6 +144,10 @@
     "ArchiveBatch": {
       "Type": "Map",
       "ItemsPath": "$.validation.valid_keys",
+      "ItemSelector": {
+        "key.$": "$$.Map.Item.Value",
+        "bucket.$": "$.ctx.bucket"
+      },
       "MaxConcurrency": 10,
       "Iterator": {
         "StartAt": "CopyToArchive",
@@ -149,8 +157,8 @@
             "Resource": "arn:aws:states:::aws-sdk:s3:copyObject",
             "Parameters": {
               "Bucket": "${archive_bucket}",
-              "CopySource.$": "States.Format('{}/{}', $$.Execution.Input.ctx.bucket, $)",
-              "Key.$": "$"
+              "CopySource.$": "States.Format('{}/{}', $.bucket, $.key)",
+              "Key.$": "$.key"
             },
             "ResultPath": null,
             "Next": "DeleteFromRaw"
@@ -159,8 +167,8 @@
             "Type": "Task",
             "Resource": "arn:aws:states:::aws-sdk:s3:deleteObject",
             "Parameters": {
-              "Bucket.$": "$$.Execution.Input.ctx.bucket",
-              "Key.$": "$"
+              "Bucket.$": "$.bucket",
+              "Key.$": "$.key"
             },
             "End": true
           }

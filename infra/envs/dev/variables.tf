@@ -34,9 +34,3 @@ variable "alarm_email" {
   description = "Email that receives CloudWatch alarm notifications"
   default     = "richard.nutsugah@amalitechtraining.org"
 }
-
-variable "bucket_suffix" {
-  type        = string
-  default     = ""
-  description = "Suffix appended to S3 bucket names for global uniqueness in sandbox accounts."
-}

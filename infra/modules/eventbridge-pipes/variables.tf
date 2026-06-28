@@ -14,6 +14,11 @@ variable "pipe_role_arn" {
   type = string
 }
 
+variable "enrichment_lambda_arn" {
+  type        = string
+  description = "ARN of the Lambda that reshapes the SQS batch into the SM input format."
+}
+
 variable "common_tags" {
   type    = map(string)
   default = {}

@@ -29,6 +29,10 @@ variable "lambda_version" {
   default = "0.1.0"
 }
 
+variable "pipe_enrichment_role_arn" {
+  type = string
+}
+
 variable "common_tags" {
   type    = map(string)
   default = {}

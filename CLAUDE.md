@@ -33,7 +33,7 @@ All planning lives in `docs/`. The relay order is:
 | `docs/data_handling.md` | S3 arrival semantics, backfill, SQS buffering |
 | `docs/data_validation.md` | T1 (Lambda), T2 (PySpark left-join), T3 (biz rules) |
 | `docs/transformation_logic.md` | PySpark KPI computation — all six KPIs |
-| `docs/glue_jobs.md` | Job inventory, worker sizing (G.025X), cost model |
+| `docs/glue_jobs.md` | Job inventory, worker sizing (G.1X in eu-west-1), cost model |
 | `docs/dynamodb_schema.md` | Table designs, PK/SK, GSIs, sample queries |
 | `docs/error_handling.md` | Retry matrix, quarantine flow, adaptive retry |
 | `docs/logging_monitoring.md` | CloudWatch logs/metrics/alarms, EMF |
@@ -64,7 +64,7 @@ S3 PUT (raw/streams/) → EventBridge → SQS buffer
                      (4 KB range request, D-23)
                               │ valid_keys[]
                               ▼
-                     Glue PySpark: TransformAndCompute  (G.025X×2, D-24)
+                     Glue PySpark: TransformAndCompute  (G.1X×2, D-24 fallback)
                      • T2 left-join ref validation
                      • T3 business rules
                      • 6 KPI aggregations → 3 parquet datasets
@@ -87,7 +87,7 @@ S3 PUT (raw/streams/) → EventBridge → SQS buffer
 | Component | Type | Key decision |
 |-----------|------|-------------|
 | `lambda/validate_schema/` | Lambda Python 3.12 | T1 schema gate; 4 KB range read (D-17, D-23) |
-| `glue/pyspark/transform_kpis.py` | Glue PySpark 4.0 | G.025X×2, autoscales to G.1X×8 for backfill (D-24) |
+| `glue/pyspark/transform_kpis.py` | Glue PySpark 4.0 | G.1X×2 in eu-west-1 (D-24 fallback) |
 | `glue/python_shell/load_dynamodb.py` | Glue Python Shell | Single job; adaptive boto3 retry (D-26) |
 | `glue/shared/` | Python wheel | Shared across all jobs; contains `dynamo_utils`, `logging_utils`, `s3_utils`, `schemas` |
 | `step_functions/pipeline.asl.json` | ASL | Read by Terraform `templatefile()` |
@@ -114,7 +114,7 @@ GSI `date_genre_index` on `genre_daily_kpi` (PK=`date`, SK=`genre`) covers the s
 - **Python style:** `ruff` + `black` enforced via pre-commit. Run `pre-commit run --all-files` before committing.
 - **Logging:** All log lines are JSON via `shared.logging_utils`. Mandatory keys: `ts`, `level`, `run_id`, `stage`, `event`. **Never log `user_name` or `user_country` — they are PII.**
 - **No IAM wildcards:** Every `Action` in every policy is an explicit list. `checkov` blocks wildcards in CI.
-- **KMS policy pattern:** Root-principal delegation only; no role ARNs in key policies (D-25, avoids Terraform circular dependencies).
+- **KMS policy pattern:** Root-principal delegation only; no role ARNs in key policies (D-25, avoids Terraform circular dependencies). Because EventBridge is a service principal, the SQS buffer uses SQS-managed SSE instead of the project CMK.
 - **Boto3 DynamoDB:** Always use `dynamo_utils.get_ddb_table()` — never instantiate `boto3.resource("dynamodb")` directly. This ensures adaptive retry is applied everywhere (D-26). The same rule applies in `ui/lib/dynamo_queries.py`.
 - **Streamlit UI:** Run locally with `streamlit run ui/app.py`. The app reads AWS credentials from the environment — same profile used for Terraform. Use `MOCK_MODE=true` to run without credentials. **Do not add API Gateway** between the UI and DynamoDB — the direct `boto3` call is intentional (D-28-R).
 - **Spark writes:** Always set `spark.conf.set("spark.sql.sources.partitionOverwriteMode", "dynamic")` before writing partitioned Parquet. Static overwrite will wipe the whole table.
@@ -127,7 +127,7 @@ GSI `date_genre_index` on `genre_daily_kpi` (PK=`date`, SK=`genre`) covers the s
 - Never use `terraform apply` directly in `prod` — CI with human approval gate only.
 - Bootstrap state bucket first: `terraform -chdir=infra/bootstrap apply`.
 - After applying, upload scripts: `aws s3 sync glue/ s3://musicstream-${env}-scripts/glue/`.
-- Worker type `G.025X` is not available in all regions — verify before applying in a new region; fallback is `G.1X`.
+- Worker type `G.025X` is not valid for this batch Glue job in eu-west-1; dev uses `G.1X`.
 - `modules/vpc-stub` is `enabled = false` by default. Enable only when moving a service into a VPC.
 
 ---

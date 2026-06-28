@@ -57,7 +57,8 @@ All alarms go to a single `etl-ops` SNS topic; subscribers (email, Slack via Cha
 
 ## 5. Dead-Letter Queues
 
-- **EventBridge → SM**: failed invocations land in `etl-eventbridge-dlq` (SQS). Alarms on `ApproximateNumberOfMessagesVisible > 0`.
+- **SQS buffer redrive**: messages that the EventBridge Pipe cannot process after the source queue redrive policy land in `dev-etl-buffer-dlq`. Alarms on `ApproximateNumberOfMessagesVisible > 0`.
+- **EventBridge rule target delivery**: failed S3-rule deliveries to the SQS target show up as `AWS/Events FailedInvocations` for `dev-s3-raw-csv-created`. If this rises while SQS `NumberOfMessagesSent` stays at zero, check SQS resource policy and SQS encryption first.
 - **SNS → external subscriber**: failed deliveries to `etl-sns-dlq`.
 - **DynamoDB writes**: no native DLQ; the loader writes a `failed_items.jsonl` to `quarantine/loader/` if any item fails after retries.
 
@@ -106,6 +107,7 @@ New failure surfaces introduced by the revised arch:
 | SQS message redrive                       | DLQ depth > 0         | Alarm `sqs_dlq_nonempty`; ops triages bad payloads.   |
 | EventBridge Pipe failure (D-22)          | Pipe execution error  | Pipe has a built-in DLQ for failed target invocations; alarms on Pipe error metrics. `trigger_pipeline` Lambda role removed from system. |
 | Quarantine fan-out on partially-invalid batch | Lambda T1 partial | Quarantine *only* the invalid keys; the batch continues with the valid subset. |
+| EventBridge cannot deliver to SQS        | EventBridge `FailedInvocations`; SQS sent count remains zero | Confirm SQS uses SQS-managed SSE or add explicit CMK key-policy grants for `events.amazonaws.com`. |
 
 ---
 

@@ -31,6 +31,11 @@ variable "kms_key_arn" {
   default = "*"
 }
 
+variable "ddb_kms_key_arn" {
+  type    = string
+  default = "*"
+}
+
 variable "lambda_validator_arn" {
   type    = string
   default = "*"
@@ -42,6 +47,11 @@ variable "sqs_queue_arn" {
 }
 
 variable "state_machine_arn" {
+  type    = string
+  default = "*"
+}
+
+variable "pipe_enrichment_lambda_arn" {
   type    = string
   default = "*"
 }

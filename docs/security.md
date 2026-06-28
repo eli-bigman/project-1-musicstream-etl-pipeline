@@ -26,11 +26,16 @@
   - `sns:Publish` on the `etl-ops` topic
   - **No** `states:*` — `states:StartExecution`/`DescribeExecution`/`StopExecution` are scoped to the SM ARN (D-20).
 
-- **EventBridge role** (`eventbridge_role`)
-  - `states:StartExecution` on the state machine
-  - Permission to write to the DLQ
+- **EventBridge rule → SQS**
+  - SQS resource policy allows `events.amazonaws.com` to call `sqs:SendMessage` on the buffer queue.
+  - The queue uses SQS-managed SSE, not the project CMK, so EventBridge does not need a KMS key-policy grant.
 
-No role has `*` in `Resource` and no role has a wildcard in `Action` beyond service-prefix shortcuts that boto3 expects (e.g. none — every action is explicit). CI lints policies with `tflint` + `checkov` and SAST via Snyk Code / `semgrep` (D-21).
+- **EventBridge Pipe role** (`eventbridge_pipe_role`)
+  - `sqs:ReceiveMessage`, `sqs:DeleteMessage`, `sqs:GetQueueAttributes` on the buffer queue
+  - `lambda:InvokeFunction` on the pipe-enrichment Lambda
+  - `states:StartExecution` on the state machine
+
+Dev still contains a small number of documented `Resource = "*"` placeholders to break Terraform circular dependencies; tighten these with a two-phase apply before prod. CI lints policies with `tflint` + `checkov` and SAST via Snyk Code / `semgrep` (D-21).
 
 ## 2. Encryption
 
@@ -41,10 +46,14 @@ No role has `*` in `Resource` and no role has a wildcard in `Action` beyond serv
 | CloudWatch Logs  | KMS CMK              |
 | Terraform state  | SSE-KMS              |
 | SNS topic        | KMS CMK              |
-| SQS DLQs         | KMS CMK              |
+| SQS buffer + DLQ | SQS-managed SSE      |
 | In-flight        | TLS — implicit for all AWS service calls |
 
 Key rotation: annual, AWS-managed for the CMKs.
+
+### SQS encryption note
+
+Do not switch the SQS buffer or its DLQ back to the project CMK unless the KMS key policy is also changed to allow the relevant AWS service principals. With the current D-25 root-delegation-only CMK policy, EventBridge cannot use the CMK to encrypt messages sent to SQS. The failure mode is subtle: the S3 EventBridge rule matches, `AWS/Events FailedInvocations` increases, and the SQS queue remains empty.
 
 ## 3. Network Posture
 
@@ -83,7 +92,7 @@ GitHub Actions assumes an OIDC IAM role (`gha-etl-deploy`) — no long-lived acc
 - **IAM wildcards removed** (D-20). Every `Action: "*"` and overbroad service wildcard (e.g. `states:*`, `logs:*`) is replaced with an explicit action list scoped to the smallest necessary set. Reflected in §1 above.
 - **New principals** introduced by the revised architecture:
   - `lambda_validator_role` — `s3:GetObject` on `raw/`, `s3:PutObject` on `quarantine/`, `logs:CreateLogStream`/`PutLogEvents` on its log group, `sns:Publish` on `etl-ops`.
-  - `lambda_trigger_role` — `sqs:ReceiveMessage`/`DeleteMessage`/`GetQueueAttributes` on the buffer queue, `states:StartExecution` on the SM ARN.
-  - `sqs_buffer_dlq` — KMS CMK encryption, redrive policy.
+  - `eventbridge_pipe_role` — `sqs:ReceiveMessage`/`DeleteMessage`/`GetQueueAttributes` on the buffer queue, `lambda:InvokeFunction` on the enrichment Lambda, `states:StartExecution` on the SM ARN.
+  - `sqs_buffer_dlq` — SQS-managed SSE, redrive policy.
 - **SAST step (D-21).** CI runs Snyk Code (or `semgrep --config p/python`) on `glue/`, `lambda/`, and any new Python sources. Findings block merge.
-- **PII discipline restated.** With the new Lambda + trigger Lambda in scope, the "never log `user_name`/`user_country`" rule explicitly extends to them. The `logging_utils` helper bundled in `glue/shared/` is repackaged so the Lambdas can `import shared.logging_utils` identically.
+- **PII discipline restated.** With the validator and pipe-enrichment Lambdas in scope, the "never log `user_name`/`user_country`" rule explicitly extends to them. The `logging_utils` helper bundled in `glue/shared/` is repackaged so Lambdas can `import shared.logging_utils` identically.

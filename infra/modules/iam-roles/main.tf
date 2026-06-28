@@ -123,9 +123,14 @@ data "aws_iam_policy_document" "glue_python_shell_policy" {
     resources = ["*"]
   }
   statement {
-    sid       = "KmsDecrypt"
+    sid       = "KmsDecryptData"
     actions   = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
     resources = [var.kms_key_arn]
+  }
+  statement {
+    sid       = "KmsDecryptDdb"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*", "kms:DescribeKey"]
+    resources = [var.ddb_kms_key_arn]
   }
 }
 
@@ -241,6 +246,11 @@ data "aws_iam_policy_document" "sfn_policy" {
     actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords", "xray:GetSamplingRules", "xray:GetSamplingTargets"]
     resources = ["*"]
   }
+  statement {
+    sid       = "KmsForS3Archive"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    resources = [var.kms_key_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "step_functions" {
@@ -278,10 +288,39 @@ data "aws_iam_policy_document" "pipe_policy" {
     actions   = ["states:StartExecution"]
     resources = [var.state_machine_arn]
   }
+  statement {
+    sid       = "InvokeEnrichment"
+    actions   = ["lambda:InvokeFunction"]
+    resources = [var.pipe_enrichment_lambda_arn]
+  }
 }
 
 resource "aws_iam_role_policy" "eventbridge_pipe" {
   name   = "${var.env}-pipe-policy"
   role   = aws_iam_role.eventbridge_pipe.id
   policy = data.aws_iam_policy_document.pipe_policy.json
+}
+
+# ── Pipe Enrichment Lambda Role (D-22) ────────────────────────────────────────
+
+resource "aws_iam_role" "pipe_enrichment" {
+  name               = "${var.env}-pipe-enrichment-role"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume.json
+  tags               = var.common_tags
+}
+
+data "aws_iam_policy_document" "pipe_enrichment_policy" {
+  statement {
+    sid     = "CloudWatchLogs"
+    actions = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = [
+      "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.env}-pipe-enrichment:*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "pipe_enrichment" {
+  name   = "${var.env}-pipe-enrichment-policy"
+  role   = aws_iam_role.pipe_enrichment.id
+  policy = data.aws_iam_policy_document.pipe_enrichment_policy.json
 }

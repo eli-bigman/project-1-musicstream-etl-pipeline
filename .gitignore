@@ -50,3 +50,8 @@ htmlcov/
 *.bkp
 *.dtmp
 
+# Local data files (large datasets and local documentation)
+data/streams/
+data/README.md
+
+

@@ -19,6 +19,8 @@ resource "aws_pipes_pipe" "sqs_to_sfn" {
     }
   }
 
+  enrichment = var.enrichment_lambda_arn
+
   target_parameters {
     step_function_state_machine_parameters {
       invocation_type = "FIRE_AND_FORGET"

@@ -13,3 +13,6 @@ output "step_functions_role_arn" {
 output "eventbridge_pipe_role_arn" {
   value = aws_iam_role.eventbridge_pipe.arn
 }
+output "pipe_enrichment_role_arn" {
+  value = aws_iam_role.pipe_enrichment.arn
+}

@@ -24,5 +24,5 @@ variable "force_destroy" {
 variable "bucket_suffix" {
   type        = string
   default     = ""
-  description = "Optional suffix appended to every bucket name (e.g. account ID) to guarantee global uniqueness in sandbox accounts."
+  description = "Optional suffix appended to every bucket name (e.g. account ID) to guarantee global uniqueness."
 }

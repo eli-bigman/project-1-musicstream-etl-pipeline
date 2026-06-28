@@ -63,9 +63,10 @@ Centralises every role; consuming modules never create roles inline (this avoids
 - `glue_pyspark_role_arn` (s3:GetObject on raw/reference/scripts, s3:PutObject on archive; glue:* on own job)
 - `glue_python_shell_role_arn` (same plus DynamoDB write on the three KPI tables)
 - `step_functions_role_arn` (states:* on its SM, glue:StartJobRun on the four jobs, s3:* on archive/quarantine)
-- `eventbridge_role_arn` (states:StartExecution on the SM)
+- `eventbridge_pipe_role_arn` (SQS consume, enrichment Lambda invoke, Step Functions start)
+- `pipe_enrichment_role_arn`
 
-Each role is least-privilege; wildcards forbidden in policy `Resource`.
+Dev still uses documented wildcard placeholders where Terraform circular dependencies would otherwise block creation; tighten with a two-phase apply before prod.
 
 ### 2.3 `modules/dynamodb-kpi-tables`
 **Inputs**
@@ -156,14 +157,35 @@ Python Shell jobs use `command.name = "pythonshell"`, `MaxCapacity = 0.0625` (or
 - `aws_sfn_state_machine` reading the ASL from `../step_functions/pipeline.asl.json` via `templatefile()`.
 - A CloudWatch log group for execution history with `INCLUDE_EXECUTION_DATA = true`.
 
-### 2.6 `modules/eventbridge-trigger`
+### 2.6 `modules/sqs-buffer`
+
 **Inputs**
-- `raw_bucket_name`, `sm_arn`, `eventbridge_role_arn`
+- `raw_bucket_name`
+- `env`
+- `common_tags`
 
 **Resources**
-- `aws_cloudwatch_event_rule` filtering `source = ["aws.s3"]`, `detail-type = ["Object Created"]`, with `detail.bucket.name` and `detail.object.key` prefix `streams/`, suffix `.csv`.
-- `aws_cloudwatch_event_target` → state machine, input transformer extracting `bucket` + `key`.
-- Dead-letter SQS queue for failed invocations.
+- `aws_sqs_queue.buffer` and `aws_sqs_queue.dlq`
+- Both queues use `sqs_managed_sse_enabled = true`
+- `aws_sqs_queue_policy` allows `events.amazonaws.com` to `sqs:SendMessage`
+- `aws_cloudwatch_event_rule` filters S3 object-created events from the raw bucket whose key matches `streams/*.csv`
+- `aws_cloudwatch_event_target` sends matching events to SQS
+
+**Important encryption constraint.** Do not use the project CMK for the SQS buffer unless the KMS key policy explicitly grants the EventBridge service principal. With root-principal-only KMS delegation, EventBridge matches S3 events but fails delivery to SQS.
+
+### 2.7 `modules/eventbridge-pipes`
+
+**Inputs**
+- `sqs_queue_arn`
+- `state_machine_arn`
+- `pipe_role_arn`
+- `enrichment_lambda_arn`
+
+**Resources**
+- `aws_pipes_pipe` from SQS to Step Functions
+- Batch size 50, maximum batching window 120 seconds
+- Lambda enrichment `dev-pipe-enrichment` reshapes the SQS batch into the Step Functions input contract
+- Step Functions target invocation type `FIRE_AND_FORGET`
 
 ## 3. Environment Composition
 
@@ -226,11 +248,21 @@ module "sm" {
   quarantine_bucket       = module.data_lake.quarantine_bucket_name
 }
 
-module "trigger" {
-  source                = "../../modules/eventbridge-trigger"
-  raw_bucket_name       = module.data_lake.raw_bucket_name
-  sm_arn                = module.sm.state_machine_arn
-  eventbridge_role_arn  = module.iam.eventbridge_role_arn
+module "sqs" {
+  source          = "../../modules/sqs-buffer"
+  env             = local.env
+  raw_bucket_name = module.data_lake.raw_bucket_name
+  common_tags     = local.common_tags
+}
+
+module "pipe" {
+  source                = "../../modules/eventbridge-pipes"
+  env                   = local.env
+  sqs_queue_arn         = module.sqs.queue_arn
+  state_machine_arn     = module.sm.state_machine_arn
+  pipe_role_arn         = module.iam.eventbridge_pipe_role_arn
+  enrichment_lambda_arn = module.lambda_validator.pipe_enrichment_arn
+  common_tags           = local.common_tags
 }
 ```
 
@@ -280,7 +312,7 @@ aws s3 cp data/songs/songs.csv  s3://musicstream-dev-reference/songs/
 |-----------------------------|------------------------------------------------------------------|
 | `modules/lambda-validator`  | Tier-1 schema gate (D-17). Python 3.12, 256 MB, 30 s timeout.    |
 | `modules/sqs-buffer`        | EventBridge → SQS standard queue + redrive DLQ (D-11-R).         |
-| `modules/lambda-trigger`    | EventBridge schedule (`rate(2 minutes)`) → drains SQS in batches up to 50 → `StartExecution`. |
+| `modules/eventbridge-pipes` | EventBridge Pipe consumes SQS, invokes enrichment Lambda, then starts Step Functions (D-22). |
 
 ### 8.2 Module removals / consolidations
 
@@ -386,17 +418,40 @@ data "aws_iam_policy_document" "pipe_perms" {
 
 The module replaces both `modules/lambda-trigger` (removed) and the cron EventBridge rule that was polling SQS. The SQS module (`modules/sqs-buffer`) stays; only the consumer changes.
 
-### 9.2 Glue PySpark Worker Type → G.025X (D-24)
+### 9.1.1 SQS encryption correction from live outage
 
-In `modules/glue-jobs`, the `transform_kpis` job configuration changes:
+The SQS module uses SQS-managed SSE:
+
+```hcl
+resource "aws_sqs_queue" "buffer" {
+  name                    = "${var.env}-etl-buffer"
+  sqs_managed_sse_enabled = true
+}
+```
+
+Using `kms_master_key_id = var.kms_key_id` with the project CMK caused the auto-trigger outage: EventBridge matched the S3 event but could not deliver to SQS because the key policy did not grant `events.amazonaws.com` KMS access. SQS-managed SSE keeps the queue encrypted without requiring service-principal grants.
+
+The S3 rule key filter uses EventBridge wildcard matching:
+
+```hcl
+object = {
+  key = [{ wildcard = "streams/*.csv" }]
+}
+```
+
+This matches partitioned keys such as `streams/yyyy=2024/mm=06/dd=26/streams2.csv`.
+
+### 9.2 Glue PySpark Worker Type → G.1X (D-24 fallback)
+
+In `modules/glue-jobs`, the `transform_kpis` job configuration uses G.1X for batch Glue in eu-west-1:
 
 ```hcl
 resource "aws_glue_job" "transform_kpis" {
   name              = "${var.env}-transform-kpis"
   role_arn          = var.glue_pyspark_role_arn
   glue_version      = "4.0"
-  worker_type       = "G.025X"   # was G.1X
-  number_of_workers = 2           # was 4; 0.5 DPU total
+  worker_type       = "G.1X"
+  number_of_workers = 2
   timeout           = 30
 
   command {
@@ -416,7 +471,7 @@ resource "aws_glue_job" "transform_kpis" {
 }
 ```
 
-Backfill runs set `--run_mode=backfill` in their `StartJobRun` arguments; the job logic reads this and sets a higher partition count. Autoscaling handles DPU provisioning.
+G.025X was considered earlier, but it is not available for standard batch Glue jobs in this region. Backfill runs set `--run_mode=backfill` in their `StartJobRun` arguments; the job logic reads this and sets a higher partition count. Autoscaling handles DPU provisioning.
 
 ### 9.3 KMS Key Policy — Root-Principal Delegation (D-25)
 
@@ -510,7 +565,7 @@ lambda/
 ├── validate_schema/
 │   ├── handler.py
 │   └── pyproject.toml
-└── trigger_pipeline/
+└── pipe_enrichment/
     ├── handler.py
     └── pyproject.toml
 ```

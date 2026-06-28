@@ -39,33 +39,21 @@ st.title("📊 KPI Dashboard")
 st.caption("Daily genre-level streaming metrics from DynamoDB. No PII displayed.")
 st.divider()
 
-# ── Filters ───────────────────────────────────────────────────────────────────
-col_f1, col_f2, col_f3 = st.columns([2, 2, 1])
+# ── Date filter + Query button ────────────────────────────────────────────────
+col_f1, col_f3 = st.columns([3, 1])
 with col_f1:
     query_date = st.date_input("Date", value=date(2024, 6, 25))
-with col_f2:
-    if MOCK_MODE:
-        from lib.mock_data import GENRES as _GENRES
-    else:
-        _GENRES = [
-            "pop",
-            "rock",
-            "hip-hop",
-            "jazz",
-            "classical",
-            "electronic",
-            "r&b",
-            "country",
-            "metal",
-            "acoustic",
-        ]
-    genre_filter = st.selectbox("Genre", ["All"] + sorted(_GENRES))
 with col_f3:
     st.write("")
     st.write("")
     query_btn = st.button("🔍 Query", type="primary")
 
 date_str = query_date.isoformat()
+
+if MOCK_MODE:
+    from lib.mock_data import GENRES as _GENRES
+else:
+    _GENRES = []
 
 
 # ── Data fetch ────────────────────────────────────────────────────────────────
@@ -78,6 +66,16 @@ def fetch_all_genres(date_str: str) -> list[dict]:
     from lib.dynamo_queries import get_all_genres_for_date
 
     return get_all_genres_for_date(date_str)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_all_genres_list(date_str: str) -> list[str]:
+    if MOCK_MODE:
+        from lib.mock_data import GENRES as _GENRES
+
+        return _GENRES
+    genres = fetch_all_genres(date_str)
+    return sorted({row["genre"] for row in genres})
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -133,6 +131,8 @@ with st.spinner("Querying DynamoDB…"):
     all_genres_data = fetch_all_genres(date_str)
     top_genres_data = fetch_top_genres(date_str)
 
+all_genres_list = sorted({row["genre"] for row in all_genres_data}) if all_genres_data else []
+
 df_all = pd.DataFrame(all_genres_data) if all_genres_data else pd.DataFrame()
 df_top = pd.DataFrame(top_genres_data) if top_genres_data else pd.DataFrame()
 
@@ -144,7 +144,7 @@ if not df_all.empty:
     col2.metric("Unique Listeners", f"{df_all['unique_listeners'].sum():,}")
     total_ms = df_all["total_listening_time_ms"].sum()
     col3.metric("Total Listening Hrs", f"{total_ms / 3_600_000:.0f}")
-    col4.metric("Active Genres", str(len(df_all)))
+    col4.metric("Genres Tracked", str(len(df_all)))
 else:
     st.info(f"No KPI data found for {date_str}.")
 
@@ -217,9 +217,19 @@ else:
 
 st.divider()
 
-# ── Genre Detail section (when a specific genre is selected) ──────────────────
-if genre_filter != "All":
-    st.subheader(f"🎸 Genre Detail — {genre_filter}")
+# ── Genre filter (placed here so users can drill down without scrolling up) ───
+st.subheader("🎸 Genre Detail")
+genre_options = ["All"] + all_genres_list if all_genres_list else ["All"]
+genre_filter = st.selectbox(
+    "Filter by genre to see detail, top songs, and 30-day trend",
+    genre_options,
+    label_visibility="visible",
+)
+
+if genre_filter == "All":
+    st.caption("Select a genre above to see KPIs, top songs, and 30-day trend for that genre.")
+else:
+    st.markdown(f"**Showing detail for: {genre_filter}**")
     kpi = fetch_genre_kpi(genre_filter, date_str)
     if kpi:
         c1, c2, c3, c4 = st.columns(4)
@@ -251,16 +261,45 @@ if genre_filter != "All":
     else:
         st.info(f"No top songs data for '{genre_filter}' on {date_str}.")
 
-    st.subheader(f"📈 30-Day Trend — {genre_filter}")
+    st.subheader(f"📈 Trend — {genre_filter}")
     trend = fetch_trend(genre_filter, date_str)
     if trend:
         df_trend = pd.DataFrame(trend)
+        df_trend["date"] = pd.to_datetime(df_trend["date"])
+
+        x_axis = st.selectbox(
+            "X axis for trend",
+            ["Date", "Week", "Month"],
+            label_visibility="visible",
+        )
+
+        if x_axis == "Date":
+            df_chart = df_trend.copy()
+            x_col = "date"
+            x_label = "Date"
+        elif x_axis == "Week":
+            df_chart = (
+                df_trend.groupby(df_trend["date"].dt.to_period("W").apply(lambda p: p.start_time))
+                .agg(listen_count=("listen_count", "sum"))
+                .reset_index()
+            )
+            x_col = "date"
+            x_label = "Week starting"
+        else:
+            df_chart = (
+                df_trend.groupby(df_trend["date"].dt.to_period("M").astype(str))
+                .agg(listen_count=("listen_count", "sum"))
+                .reset_index()
+            )
+            x_col = "date"
+            x_label = "Month"
+
         fig_trend = px.line(
-            df_trend,
-            x="date",
+            df_chart,
+            x=x_col,
             y="listen_count",
             markers=True,
-            labels={"listen_count": "Plays", "date": "Date"},
+            labels={"listen_count": "Plays", x_col: x_label},
             title=f"Listen Count — {genre_filter}",
             template="plotly_dark",
         )

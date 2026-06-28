@@ -9,11 +9,11 @@
 
 | Job name                 | Type          | DPU / Workers      | Purpose                                                     | Source script                          |
 |--------------------------|---------------|--------------------|-------------------------------------------------------------|----------------------------------------|
-| `validate_schema`        | Python Shell  | 0.0625 DPU         | Tier-1 schema gate; runs per arrival                        | `glue/python_shell/validate_schema.py` |
-| `validate_referential`   | Python Shell  | 1 DPU              | Tier-2 ref-integrity; writes clean parquet                   | `glue/python_shell/validate_referential.py` |
-| `transform_kpis`         | PySpark (4.0) | G.1X × 4 (auto)    | Compute the six KPIs into parquet                            | `glue/pyspark/transform_kpis.py`       |
-| `load_dynamodb`          | Python Shell  | 1 DPU              | Read KPI parquet, batch-write to DynamoDB                    | `glue/python_shell/load_dynamodb.py`   |
+| `transform_kpis`         | PySpark (4.0) | G.1X × 2           | Validate referential/business rules and compute six KPIs into parquet | `glue/pyspark/transform_kpis.py` |
+| `load_dynamodb`          | Python Shell  | 0.0625 DPU         | Read KPI parquet, batch-write all three DynamoDB tables      | `glue/python_shell/load_dynamodb.py`   |
 | `refresh_reference`      | Python Shell  | 0.0625 DPU         | (Manual) Refresh users/songs reference + crawl               | `glue/python_shell/refresh_reference.py` |
+
+Tier-1 schema validation is handled by Lambda (`lambda/validate_schema/handler.py`), not Glue.
 
 ## 2. Why this mix (Python Shell + PySpark)
 
@@ -138,31 +138,30 @@ The brief requires *both* PySpark and Python Shell Glue jobs and a separate "Glu
 
 A batch can now contain up to 50 files (SQS drain limit). With 1,000 files/day arriving in ~30 batches, daily cost is ~$2 — about 35× cheaper than the original "1 SM per file" model under the same load.
 
-### 10.5 Worker type → G.025X (D-24)
+### 10.5 Worker type → G.1X (D-24 fallback)
 
 Revised job spec for `transform_kpis`:
 
 | Parameter         | Old        | New                                   |
 |-------------------|------------|---------------------------------------|
-| `worker_type`     | `G.1X`     | `G.025X`                              |
-| `number_of_workers` | 4        | 2 (autoscales up to 8 for backfill)   |
-| DPU total (normal)| 4.0        | 0.5                                   |
-| DPU total (backfill) | —       | up to 8.0 (`--run_mode=backfill`)     |
+| `worker_type`     | `G.1X`     | `G.1X`                                |
+| `number_of_workers` | 4        | 2                                     |
+| DPU total (normal)| 4.0        | 2.0                                   |
 
-**G.025X memory.** 4 GB RAM per worker × 2 = 8 GB driver + executor pool. Sufficient for broadcasting a ≤50 MB Parquet songs table and processing micro-batches of a few thousand rows.
+**Why not G.025X.** G.025X is not valid for this standard batch Glue job in eu-west-1. G.1X × 2 is the deployed minimum.
 
-**Fallback region check.** `G.025X` is not available in all regions. The Terraform `modules/glue-jobs` module will add a `variable "worker_type"` with default `G.025X` and a note to override to `G.1X` in regions that lack it.
+For large backfills, tune worker count and partition count deliberately; do not assume the smaller streaming worker type is available.
 
 ### 10.6 Revised cost model (updated for D-24)
 
 | Job                       | Avg duration | DPU   | Avg cost per normal batch run |
 |---------------------------|--------------|-------|-------------------------------|
 | Lambda `validate_schema`  | ~500 ms      | —     | ~$0.000001                    |
-| `transform_kpis` (G.025X) | 2 min        | 0.5   | ~$0.008                       |
+| `transform_kpis` (G.1X)   | 2 min        | 2.0   | ~$0.06                        |
 | `load_dynamodb`           | 30 s         | 0.0625| ~$0.001                       |
 | **Per batch total**       | ~3 min       |       | **~$0.009**                   |
 
-Down from ~$0.07/batch (D-02-R revision). At 30 batches/day: ~$0.27/day vs. $2.10/day.
+Actual dev runs are dominated by Glue cold start; measured transform runtime is roughly 96–110 seconds on G.1X × 2.
 
 ### 10.4 Direct-write rationale (pushback)
 

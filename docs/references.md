@@ -36,6 +36,8 @@
 
 ### Amazon S3
 - **EventBridge notifications** — https://docs.aws.amazon.com/AmazonS3/latest/userguide/EventBridge.html
+- **Enable S3 delivery to EventBridge** — https://docs.aws.amazon.com/AmazonS3/latest/userguide/enable-event-notifications-eventbridge.html
+- **S3 EventBridge event structure** — https://docs.aws.amazon.com/AmazonS3/latest/userguide/ev-events.html
 - **Lifecycle configuration** — https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html
 - **SSE-KMS** — https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html
 - **Strong read-after-write consistency** — https://docs.aws.amazon.com/AmazonS3/latest/userguide/Welcome.html#ConsistencyModel
@@ -50,12 +52,15 @@
 ### Amazon SQS (added per `.ai/review.md`)
 - **Developer Guide** — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/welcome.html
 - **DLQ + redrive policy** — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-dead-letter-queues.html
+- **SQS encryption at rest** — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-server-side-encryption.html
+- **SQS KMS permissions for AWS service event sources** — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-key-management.html
 - **Long polling** — https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-short-and-long-polling.html
 - **Lambda event source mapping for SQS** — https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html
 - **`aws_sqs_queue` (Terraform)** — https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/sqs_queue
 
 ### EventBridge (rules + pipes)
 - **Event patterns** — https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html
+- **Event pattern comparison operators** — https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-create-pattern-operators.html
 - **Input transformer** — https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-transform-target-input.html
 - **Targets** — https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-targets.html
 - **EventBridge Pipes overview** — https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-pipes.html
