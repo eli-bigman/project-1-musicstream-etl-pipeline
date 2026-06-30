@@ -98,6 +98,15 @@ data "aws_iam_policy_document" "glue_python_shell_policy" {
       "${var.raw_bucket_arn}/*",
       var.scripts_bucket_arn,
       "${var.scripts_bucket_arn}/*",
+      var.reference_bucket_arn,
+      "${var.reference_bucket_arn}/*",
+    ]
+  }
+  statement {
+    sid     = "WriteReferenceParquet"
+    actions = ["s3:PutObject"]
+    resources = [
+      "${var.reference_bucket_arn}/*",
     ]
   }
   statement {

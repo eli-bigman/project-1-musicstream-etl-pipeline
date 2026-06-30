@@ -14,6 +14,10 @@ variable "glue_python_shell_role_arn" {
   type = string
 }
 
+variable "reference_bucket_name" {
+  type = string
+}
+
 variable "shared_wheel_s3_uri" {
   type = string
 }
