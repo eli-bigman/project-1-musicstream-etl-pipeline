@@ -34,6 +34,7 @@ def _partition_values_from_key(key: str) -> dict:
          → {"listen_date": "2024-06-25"}
     """
     import re
+
     return {m.group(1): m.group(2) for m in re.finditer(r"([^/=]+)=([^/]+)/", key)}
 
 

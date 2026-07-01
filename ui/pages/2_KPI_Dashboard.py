@@ -131,7 +131,9 @@ with st.spinner("Querying DynamoDB…"):
     all_genres_data = fetch_all_genres(date_str)
     top_genres_data = fetch_top_genres(date_str)
 
-all_genres_list = sorted({row["genre"] for row in all_genres_data}) if all_genres_data else []
+all_genres_list = (
+    sorted({row["genre"] for row in all_genres_data}) if all_genres_data else []
+)
 
 df_all = pd.DataFrame(all_genres_data) if all_genres_data else pd.DataFrame()
 df_top = pd.DataFrame(top_genres_data) if top_genres_data else pd.DataFrame()
@@ -227,7 +229,9 @@ genre_filter = st.selectbox(
 )
 
 if genre_filter == "All":
-    st.caption("Select a genre above to see KPIs, top songs, and 30-day trend for that genre.")
+    st.caption(
+        "Select a genre above to see KPIs, top songs, and 30-day trend for that genre."
+    )
 else:
     st.markdown(f"**Showing detail for: {genre_filter}**")
     kpi = fetch_genre_kpi(genre_filter, date_str)
@@ -279,7 +283,9 @@ else:
             x_label = "Date"
         elif x_axis == "Week":
             df_chart = (
-                df_trend.groupby(df_trend["date"].dt.to_period("W").apply(lambda p: p.start_time))
+                df_trend.groupby(
+                    df_trend["date"].dt.to_period("W").apply(lambda p: p.start_time)
+                )
                 .agg(listen_count=("listen_count", "sum"))
                 .reset_index()
             )

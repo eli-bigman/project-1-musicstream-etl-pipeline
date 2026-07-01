@@ -30,14 +30,12 @@ def lambda_handler(event, context):
             logger.warning("Skipping record with unparseable body: %r", body_raw)
             continue
 
-        record_bucket = (
-            body.get("detail", {}).get("bucket", {}).get("name")
-            or body.get("Records", [{}])[0].get("s3", {}).get("bucket", {}).get("name")
-        )
-        record_key = (
-            body.get("detail", {}).get("object", {}).get("key")
-            or body.get("Records", [{}])[0].get("s3", {}).get("object", {}).get("key")
-        )
+        record_bucket = body.get("detail", {}).get("bucket", {}).get(
+            "name"
+        ) or body.get("Records", [{}])[0].get("s3", {}).get("bucket", {}).get("name")
+        record_key = body.get("detail", {}).get("object", {}).get("key") or body.get(
+            "Records", [{}]
+        )[0].get("s3", {}).get("object", {}).get("key")
 
         if not record_key:
             logger.warning("No key found in record body")
@@ -48,7 +46,9 @@ def lambda_handler(event, context):
         keys.append(record_key)
 
     if not bucket or not keys:
-        raise ValueError(f"Could not extract bucket/keys from batch. bucket={bucket!r}, keys={keys!r}")
+        raise ValueError(
+            f"Could not extract bucket/keys from batch. bucket={bucket!r}, keys={keys!r}"
+        )
 
     logger.info("Enriched batch: bucket=%s keys_count=%d", bucket, len(keys))
 
