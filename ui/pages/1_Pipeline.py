@@ -169,7 +169,7 @@ else:
                         resp = s3.get_object(Bucket=f"musicstream-{ENV}-quarantine-970547336735", Key=reason_key)
                         reason = json.loads(resp["Body"].read().decode("utf-8"))
                         reason_str = reason.get("error", reason.get("message", "Unknown"))
-                    except:
+                    except Exception:
                         reason_str = "See reason JSON for details"
 
                     quarantine_data.append({

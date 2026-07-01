@@ -37,16 +37,16 @@ Write-Host ""
 Write-Host "  $BOLD$BLUE  LIFECYCLE$R"
 Write-Host "  $GRAY  +----------------+-------------------------------------------+$R"
 Write-Host "  $GRAY  | $R$YELLOW$(Pad 'make clean' 14)$GRAY  | $R$(Pad 'Destroy all AWS resources + clean local artifacts' 41)$GRAY  |$R"
-Write-Host "  $GRAY  | $R$GREEN$(Pad 'make deploy' 14)$GRAY  | $R$(Pad 'Two-phase Terraform apply + compile & upload assets' 41)$GRAY  |$R"
+Write-Host "  $GRAY  | $R$GREEN$(Pad 'make deploy' 14)$GRAY  | $R$(Pad 'Full deploy (infra, code assets, & reference data)' 41)$GRAY  |$R"
 Write-Host "  $GRAY  +----------------+-------------------------------------------+$R"
 Write-Host ""
 
 # -- Section: Data ------------------------------------------------------------
 Write-Host "  $BOLD$BLUE  DATA$R"
-Write-Host "  $GRAY  +---------------------+------------------------------------+$R"
-Write-Host "  $GRAY  | $R$CYAN$(Pad 'make upload-reference' 21)$GRAY  | $R$(Pad 'Sync users.csv + songs.csv, run Glue job' 36)$GRAY  |$R"
-Write-Host "  $GRAY  | $R$CYAN$(Pad 'make seed-data' 21)$GRAY  | $R$(Pad 'Push sample stream CSVs to trigger ETL' 36)$GRAY  |$R"
-Write-Host "  $GRAY  +---------------------+------------------------------------+$R"
+Write-Host "  $GRAY  +----------------+-------------------------------------------+$R"
+Write-Host "  $GRAY  | $R$CYAN$(Pad 'make upload' 14)$GRAY  | $R$(Pad 'Sync reference CSVs (users, songs) & run Glue job' 41)$GRAY  |$R"
+Write-Host "  $GRAY  | $R$CYAN$(Pad 'make seed-data' 14)$GRAY  | $R$(Pad 'Push sample stream CSVs to raw S3 to trigger ETL' 41)$GRAY  |$R"
+Write-Host "  $GRAY  +----------------+-------------------------------------------+$R"
 Write-Host ""
 
 # -- Section: Dev -------------------------------------------------------------
@@ -59,5 +59,5 @@ Write-Host "  $GRAY  +----------------+-----------------------------------------
 Write-Host ""
 
 # -- Tip ---------------------------------------------------------------------
-Write-Host "  $DIM$GRAY  Demo flow:  make clean  ->  make deploy  ->  make upload-reference  ->  make ui$R"
+Write-Host "  $DIM$GRAY  Demo flow:  make clean  ->  make deploy  ->  make seed-data  ->  make ui$R"
 Write-Host ""

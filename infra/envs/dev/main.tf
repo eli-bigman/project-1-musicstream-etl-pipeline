@@ -1,9 +1,9 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  env          = var.env
-  project      = var.project
-  account_id   = data.aws_caller_identity.current.account_id
+  env        = var.env
+  project    = var.project
+  account_id = data.aws_caller_identity.current.account_id
   common_tags = {
     Project   = var.project
     Env       = var.env
