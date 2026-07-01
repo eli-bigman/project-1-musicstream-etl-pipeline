@@ -118,7 +118,7 @@ def run(spark, args, logger):
     # ── Read reference Parquet (D-18) ─────────────────────────────────────────
     ref_bucket = args["reference_bucket"]
     songs = (
-        spark.read.parquet(f"s3://{ref_bucket}/songs/")
+        spark.read.parquet(f"s3://{ref_bucket}/songs/songs.parquet")
         .select(
             F.col("track_id"),
             F.col("track_name"),

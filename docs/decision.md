@@ -224,3 +224,24 @@ Explicitly deferred: Kinesis-based true streaming, Lake Formation fine-grained a
 - **Rationale.** Empirical check eliminates the risk. Recorded here so future agents do not add unnecessary dedup logic, and so that if the reference data is ever refreshed with a different songs dataset, this check must be re-run.
 - **Trade-offs.** None — removing a no-op is strictly better.
 - **Reversibility.** If a new songs dataset introduces duplicates: add `.dropDuplicates(["track_id"])` after reading reference Parquet in `transform_kpis.py`. Record as D-29-R.
+
+## D-30 · ParseInput Must Unwrap the EventBridge Pipes Array
+- **Context.** A live end-to-end run in `dev` (account 970547336735) failed at `ParseInput` with `States.Runtime: $.detail.bucket.name could not be found`. EventBridge Pipes always delivers the enrichment Lambda's return value to the target wrapped in a single-element JSON array (`[{"detail": {...}}]`), even for a batch of one. The ASL's `ParseInput` Pass state assumed a bare object.
+- **Choice.** Add `"InputPath": "$[0]"` to `ParseInput` to unwrap the array before extracting `bucket`/`keys`/`run_id`. Because `ResultPath` merges onto the *pre-InputPath* (raw array) state input, `ResultPath: "$.ctx"` cannot work here — an object key cannot be merged onto an array. Restructured `Parameters` to produce `{"ctx": {...}}` directly and changed `ResultPath` to `"$"` (full replace) so the Pass state's output becomes the new working document for every downstream state (`$.ctx.bucket`, `$.ctx.keys`, etc. all still resolve).
+- **Rationale.** This is the shape Pipes actually sends (verified via failed/succeeded execution history), not a hypothetical — confirmed by both a real S3-triggered execution and a direct `start-execution` test with the captured Pipes payload.
+- **Trade-offs.** None; this restores correctness with no design change to downstream states.
+- **Reversibility.** High — confined to one Pass state.
+
+## D-31 · transform_kpis.py Must Read the Reference Parquet File, Not the Prefix
+- **Context.** `refresh_reference.py` (D-18) writes both `songs/songs.csv` (source) and `songs/songs.parquet` (converted) into the same `songs/` prefix in the reference bucket. `transform_kpis.py` read reference data via `spark.read.parquet(f"s3://{ref_bucket}/songs/")`, which globs every file under the prefix — including the co-located `.csv` — and fails with "not a Parquet file."
+- **Choice.** Point the reader at the exact object: `spark.read.parquet(f"s3://{ref_bucket}/songs/songs.parquet")`.
+- **Rationale.** Cheapest fix that doesn't touch the reference-refresh job's intentional co-location design (D-18 keeps source CSV and converted Parquet together for auditability).
+- **Trade-offs.** If `refresh_reference.py` ever writes partitioned/multi-part Parquet output instead of a single file, this path must be revisited.
+- **Reversibility.** High.
+
+## D-32 · CD-Dev Uses Static AWS Credentials, Not OIDC
+- **Context.** `cd-dev.yml` referenced `secrets.AWS_DEPLOY_ROLE_ARN` for `aws-actions/configure-aws-credentials` OIDC role assumption, but no GitHub OIDC provider or IAM role was ever provisioned in Terraform, and no repo/environment secret existed. Every CD-Dev run failed at the credentials step before touching Terraform.
+- **Choice.** Set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` as GitHub environment secrets (`dev` environment) from the `sandbox_user` IAM user — the same credentials used for local `terraform apply` — and switch `cd-dev.yml` to `aws-access-key-id`/`aws-secret-access-key` inputs instead of `role-to-assume`. Also fixed the Glue-wheel upload step, which hardcoded `s3://musicstream-dev-scripts/...` (no account-id suffix, doesn't exist) — now resolves bucket/state-machine names via `terraform output` after apply. Smoke-test env vars (`RAW_BUCKET`, `STATE_MACHINE_ARN`) were also missing and are now wired from the same outputs.
+- **Rationale.** User-directed: build proper OIDC only if the existing setup already works; otherwise use the CLI-settable static-credential shortcut to unblock CD quickly. `cd-prod.yml` was left untouched — it is tag-triggered (not on every push), a separate, more sensitive decision, and out of scope for this pass.
+- **Trade-offs.** A long-lived IAM credential now lives in GitHub Secrets instead of a short-lived STS-assumed role — a real, accepted reduction in security posture for expediency. Revisit with a proper GitHub OIDC provider + scoped deploy role (Terraform `modules/github-oidc`, not yet written) if this pipeline moves beyond a personal sandbox account.
+- **Reversibility.** Medium — reversing requires provisioning the OIDC module, rotating out the static keys from GitHub Secrets, and reverting the workflow's credentials step.

@@ -4,12 +4,11 @@
 set -euo pipefail
 
 ENV=${1:-dev}
-RAW_BUCKET="musicstream-${ENV}-raw"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+RAW_BUCKET="musicstream-${ENV}-raw-${ACCOUNT_ID}"
 
 declare -A FILE_DATES=(
-  ["data/streams/streams1.csv"]="2024-06-25"
-  ["data/streams/streams2.csv"]="2024-06-26"
-  ["data/streams/streams3.csv"]="2024-06-27"
+  ["data/streams/streams6.csv"]="2024-06-25"
 )
 
 for FILE in "${!FILE_DATES[@]}"; do

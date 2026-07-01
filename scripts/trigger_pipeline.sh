@@ -3,9 +3,10 @@
 # Usage: bash scripts/trigger_pipeline.sh [key] [env]
 set -euo pipefail
 
-KEY=${1:-"streams/yyyy=2024/mm=06/dd=25/streams1.csv"}
+KEY=${1:-"streams/yyyy=2024/mm=06/dd=25/streams6.csv"}
 ENV=${2:-dev}
-RAW_BUCKET="musicstream-${ENV}-raw"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+RAW_BUCKET="musicstream-${ENV}-raw-${ACCOUNT_ID}"
 SQS_URL=$(aws ssm get-parameter --name "/${ENV}/sqs/buffer-queue-url" --query "Parameter.Value" --output text 2>/dev/null || echo "")
 
 if [ -z "${SQS_URL}" ]; then
@@ -21,7 +22,7 @@ PAYLOAD=$(cat <<EOF
 {
   "detail": {
     "bucket": {"name": "${RAW_BUCKET}"},
-    "object": {"keys": ["${KEY}"]}
+    "object": {"key": "${KEY}"}
   }
 }
 EOF

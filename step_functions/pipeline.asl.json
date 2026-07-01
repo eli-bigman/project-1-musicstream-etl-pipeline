@@ -5,13 +5,16 @@
 
     "ParseInput": {
       "Type": "Pass",
-      "Comment": "Extract bucket + keys list from Pipe payload; inject run_id from execution name.",
+      "Comment": "EventBridge Pipes wraps the Lambda enrichment output in a single-element array before invoking the target; unwrap with InputPath before extracting bucket + keys. ResultPath must be $ (not $.ctx) since the raw state input is an array and can't have a key merged onto it.",
+      "InputPath": "$[0]",
       "Parameters": {
-        "bucket.$": "$.detail.bucket.name",
-        "keys.$": "$.detail.object.keys",
-        "run_id.$": "$$.Execution.Name"
+        "ctx": {
+          "bucket.$": "$.detail.bucket.name",
+          "keys.$": "$.detail.object.keys",
+          "run_id.$": "$$.Execution.Name"
+        }
       },
-      "ResultPath": "$.ctx",
+      "ResultPath": "$",
       "Next": "ValidateSchema"
     },
 
