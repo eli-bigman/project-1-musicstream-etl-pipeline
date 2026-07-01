@@ -72,7 +72,7 @@ resource "aws_glue_job" "load_dynamodb" {
     "--enable-metrics"                   = "true"
     "--enable-continuous-cloudwatch-log" = "true"
     "--extra-py-files"                   = var.shared_wheel_s3_uri
-    "--additional-python-modules"        = "pyarrow==14.0.2,boto3>=1.34"
+    "--additional-python-modules"        = "pyarrow==14.0.2"
     "--TempDir"                          = "s3://${var.scripts_bucket_name}/tmp/"
     "--continuous-log-logGroup"          = aws_cloudwatch_log_group.load_dynamodb.name
     "--env"                              = var.env
@@ -109,7 +109,7 @@ resource "aws_glue_job" "refresh_reference" {
     "--enable-metrics"                   = "true"
     "--enable-continuous-cloudwatch-log" = "true"
     "--extra-py-files"                   = var.shared_wheel_s3_uri
-    "--additional-python-modules"        = "pyarrow==14.0.2,pandas>=1.5.0,boto3>=1.34"
+    "--additional-python-modules"        = "pyarrow==14.0.2"
     "--TempDir"                          = "s3://${var.scripts_bucket_name}/tmp/"
     "--continuous-log-logGroup"          = aws_cloudwatch_log_group.refresh_reference.name
     "--env"                              = var.env

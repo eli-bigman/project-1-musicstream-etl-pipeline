@@ -20,7 +20,7 @@ variable "vpc_stub_enabled" {
 
 variable "pyspark_worker_type" {
   type    = string
-  default = "G.025X"
+  default = "G.1X"
   # Override to G.1X if region does not support G.025X (D-24)
 }
 
