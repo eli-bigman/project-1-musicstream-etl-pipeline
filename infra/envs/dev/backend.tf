@@ -13,9 +13,11 @@ terraform {
 }
 
 provider "aws" {
-  region  = var.region
-  profile = "sandbox-musicstream-dev"
-  # Uses sandbox_user IAM user on account 970547336735
+  region = var.region
+  # Credentials come from the default provider chain: AWS_PROFILE env var
+  # locally (sandbox_user on account 970547336735), or AWS_ACCESS_KEY_ID /
+  # AWS_SECRET_ACCESS_KEY env vars in CI (D-32) — no hardcoded profile so
+  # both environments resolve the same provider block.
   default_tags {
     tags = {
       Project   = var.project
