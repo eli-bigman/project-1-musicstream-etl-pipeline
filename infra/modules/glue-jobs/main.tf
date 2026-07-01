@@ -69,6 +69,7 @@ resource "aws_glue_job" "load_dynamodb" {
   }
 
   default_arguments = {
+    "--JOB_NAME"                         = "${var.env}-load-dynamodb"
     "--enable-metrics"                   = "true"
     "--enable-continuous-cloudwatch-log" = "true"
     "--extra-py-files"                   = var.shared_wheel_s3_uri
@@ -106,6 +107,7 @@ resource "aws_glue_job" "refresh_reference" {
   }
 
   default_arguments = {
+    "--JOB_NAME"                         = "${var.env}-refresh-reference"
     "--enable-metrics"                   = "true"
     "--enable-continuous-cloudwatch-log" = "true"
     "--extra-py-files"                   = var.shared_wheel_s3_uri
