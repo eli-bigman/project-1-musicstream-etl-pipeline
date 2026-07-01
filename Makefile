@@ -1,8 +1,8 @@
-﻿SHELL         := powershell.exe
+SHELL         := powershell.exe
 .SHELLFLAGS   := -NoProfile -ExecutionPolicy Bypass -Command
 PS            := powershell.exe -NoProfile -ExecutionPolicy Bypass -File
 
-.PHONY: help clean deploy upload-assets upload-reference seed-data ui test
+.PHONY: help clean deploy upload-assets upload seed-data ui test
 
 help:
 	$(PS) scripts\help.ps1
@@ -15,11 +15,12 @@ deploy:
 	$(PS) scripts\run_with_env.ps1 terraform -chdir=infra/envs/dev apply "-target=module.data_lake" "-target=module.kms_data" -auto-approve
 	$(PS) scripts\deploy.ps1
 	$(PS) scripts\run_with_env.ps1 terraform -chdir=infra/envs/dev apply -auto-approve
+	$(PS) scripts\upload_reference.ps1
 
 upload-assets:
 	$(PS) scripts\deploy.ps1
 
-upload-reference:
+upload:
 	$(PS) scripts\upload_reference.ps1
 
 seed-data:
