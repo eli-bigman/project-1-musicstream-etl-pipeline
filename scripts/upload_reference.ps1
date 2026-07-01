@@ -21,7 +21,7 @@ aws s3 cp "data/users/users.csv" "s3://$refBucket/users/users.csv"
 aws s3 cp "data/songs/songs.csv" "s3://$refBucket/songs/songs.csv"
 Write-Host "==> Triggering dev-refresh-reference Glue job..." -ForegroundColor Yellow
 $ts = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-$argsJson = '{\"--run_id\":\"manual-' + $ts + '\",\"--reference_bucket\":\"' + $refBucket + '\",\"--env\":\"dev\"}'
+$argsJson = '{\"--run_id\":\"manual-' + $ts + '\",\"--reference_bucket\":\"' + $refBucket + '\",\"--env\":\"dev\",\"--JOB_NAME\":\"dev-refresh-reference\"}'
 $jobRunId = (aws glue start-job-run --job-name "dev-refresh-reference" --arguments $argsJson --query "JobRunId" --output text)
 Write-Host "    Job run started: $jobRunId"
 Write-Host "==> Reference data upload complete. Parquet conversion running." -ForegroundColor Green

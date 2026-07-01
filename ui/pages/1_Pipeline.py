@@ -136,7 +136,9 @@ st.divider()
 
 # ── Section 3: Quarantine Monitor ─────────────────────────────────────────────
 st.subheader("3 · Quarantine (Rejected Files)")
-st.caption("Files that failed T1 schema validation or T2 referential integrity. Check reason JSONs for details.")
+st.caption(
+    "Files that failed T1 schema validation or T2 referential integrity. Check reason JSONs for details."
+)
 
 if MOCK_MODE:
     st.info("Mock mode — no quarantine data to display.")
@@ -148,8 +150,7 @@ else:
         s3 = boto3.client("s3", region_name="eu-west-1")
         try:
             response = s3.list_objects_v2(
-                Bucket=f"musicstream-{ENV}-quarantine-970547336735",
-                Prefix="streams/"
+                Bucket=f"musicstream-{ENV}-quarantine-970547336735", Prefix="streams/"
             )
             objects = response.get("Contents", [])
 
@@ -166,23 +167,35 @@ else:
                     # Try to fetch the reason JSON
                     reason_key = key.replace(".csv", "_reason.json")
                     try:
-                        resp = s3.get_object(Bucket=f"musicstream-{ENV}-quarantine-970547336735", Key=reason_key)
+                        resp = s3.get_object(
+                            Bucket=f"musicstream-{ENV}-quarantine-970547336735",
+                            Key=reason_key,
+                        )
                         reason = json.loads(resp["Body"].read().decode("utf-8"))
-                        reason_str = reason.get("error", reason.get("message", "Unknown"))
+                        reason_str = reason.get(
+                            "error", reason.get("message", "Unknown")
+                        )
                     except Exception:
                         reason_str = "See reason JSON for details"
 
-                    quarantine_data.append({
-                        "File": key.split("/")[-1],
-                        "Size (MB)": f"{size_mb:.1f}",
-                        "Reason": reason_str,
-                    })
+                    quarantine_data.append(
+                        {
+                            "File": key.split("/")[-1],
+                            "Size (MB)": f"{size_mb:.1f}",
+                            "Reason": reason_str,
+                        }
+                    )
 
                 if quarantine_data:
                     import pandas as pd
+
                     df_quarantine = pd.DataFrame(quarantine_data)
-                    st.dataframe(df_quarantine, use_container_width=True, hide_index=True)
-                    st.warning(f"⚠️ {len(csv_files)} file(s) quarantined. Review the reason and re-upload after fixing the issue.")
+                    st.dataframe(
+                        df_quarantine, use_container_width=True, hide_index=True
+                    )
+                    st.warning(
+                        f"⚠️ {len(csv_files)} file(s) quarantined. Review the reason and re-upload after fixing the issue."
+                    )
         except Exception as e:
             st.warning(f"Quarantine bucket not accessible or empty: {e}")
     except ImportError:
