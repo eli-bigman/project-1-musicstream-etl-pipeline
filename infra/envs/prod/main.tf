@@ -97,6 +97,7 @@ module "glue_jobs" {
   scripts_bucket_name        = module.data_lake.scripts_bucket_name
   glue_pyspark_role_arn      = module.iam.glue_pyspark_role_arn
   glue_python_shell_role_arn = module.iam.glue_python_shell_role_arn
+  reference_bucket_name      = module.data_lake.reference_bucket_name
   shared_wheel_s3_uri        = "s3://${module.data_lake.scripts_bucket_name}/glue/shared/shared-0.1.0-py3-none-any.whl"
   genre_daily_table          = module.ddb.genre_daily_table_name
   top_songs_daily_table      = module.ddb.top_songs_daily_table_name

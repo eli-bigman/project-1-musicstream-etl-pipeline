@@ -83,3 +83,38 @@ resource "aws_glue_job" "load_dynamodb" {
 
   tags = var.common_tags
 }
+
+resource "aws_cloudwatch_log_group" "refresh_reference" {
+  name              = "/aws/glue/jobs/${var.env}-refresh-reference"
+  retention_in_days = var.log_retention_days
+  tags              = var.common_tags
+}
+
+# Python Shell: convert users.csv and songs.csv to Parquet (D-18)
+resource "aws_glue_job" "refresh_reference" {
+  name         = "${var.env}-refresh-reference"
+  role_arn     = var.glue_python_shell_role_arn
+  glue_version = "3.0"
+  max_capacity = 0.0625
+  timeout      = 30
+  max_retries  = 0
+
+  command {
+    name            = "pythonshell"
+    python_version  = "3.9"
+    script_location = "s3://${var.scripts_bucket_name}/glue/python_shell/refresh_reference.py"
+  }
+
+  default_arguments = {
+    "--enable-metrics"                   = "true"
+    "--enable-continuous-cloudwatch-log" = "true"
+    "--extra-py-files"                   = var.shared_wheel_s3_uri
+    "--additional-python-modules"        = "pyarrow==14.0.2,pandas>=1.5.0,boto3>=1.34"
+    "--TempDir"                          = "s3://${var.scripts_bucket_name}/tmp/"
+    "--continuous-log-logGroup"          = aws_cloudwatch_log_group.refresh_reference.name
+    "--env"                              = var.env
+    "--reference_bucket"                 = var.reference_bucket_name
+  }
+
+  tags = var.common_tags
+}
